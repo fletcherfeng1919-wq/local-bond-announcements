@@ -273,9 +273,23 @@ def _plan_lead_join(ann_df: pd.DataFrame, plan_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame(rows)
 
 
+WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
+def _add_derived_time_fields(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["region"] = df["province"].map(config.PROVINCE_TO_REGION)
+    bid = pd.to_datetime(df["bid_date"])
+    df["bid_weekday"] = bid.dt.weekday.map(lambda d: WEEKDAY_CN[int(d)] if pd.notna(d) else None)
+    df["bid_year"] = bid.dt.year
+    df["bid_quarter"] = bid.dt.year.astype("Int64").astype(str) + "Q" + bid.dt.quarter.astype("Int64").astype(str)
+    return df
+
+
 def build_summary_stat_xlsx(ann_df: pd.DataFrame, plan_df: pd.DataFrame):
     out_path = config.OUTPUT_DIR / "local_summary.xlsx"
     valid = ann_df.dropna(subset=["category_code"]).copy()
+    valid = _add_derived_time_fields(valid)
 
     by_term_category = (
         valid.groupby(["category_label", "term"], observed=True)
@@ -294,6 +308,31 @@ def build_summary_stat_xlsx(ann_df: pd.DataFrame, plan_df: pd.DataFrame):
         valid.groupby(["province", "category_label"], observed=True)
         .apply(_lead_stats, include_groups=False).reset_index()
     )
+    by_region = (
+        valid.dropna(subset=["region"]).groupby("region", observed=True)
+        .apply(_lead_stats, include_groups=False).reset_index()
+        .rename(columns={"region": "区域分组"})
+    )
+    by_region["区域分组"] = pd.Categorical(by_region["区域分组"], categories=config.REGION_ORDER, ordered=True)
+    by_region = by_region.sort_values("区域分组")
+    by_region_category = (
+        valid.dropna(subset=["region"]).groupby(["region", "category_label"], observed=True)
+        .apply(_lead_stats, include_groups=False).reset_index()
+        .rename(columns={"region": "区域分组"})
+    )
+    by_weekday = (
+        valid.dropna(subset=["bid_weekday"]).groupby("bid_weekday", observed=True)
+        .apply(_lead_stats, include_groups=False).reset_index()
+        .rename(columns={"bid_weekday": "招标日星期"})
+    )
+    by_weekday["招标日星期"] = pd.Categorical(by_weekday["招标日星期"], categories=WEEKDAY_CN, ordered=True)
+    by_weekday = by_weekday.sort_values("招标日星期")
+    by_quarter = (
+        valid.dropna(subset=["bid_quarter"]).groupby("bid_quarter", observed=True)
+        .apply(_lead_stats, include_groups=False).reset_index()
+        .rename(columns={"bid_quarter": "招标日所属季度"})
+        .sort_values("招标日所属季度")
+    )
 
     anomalies = ann_df[ann_df["workday_gap"] < config.STATUTORY_MIN_WORKDAYS].copy()
     anomalies = anomalies.sort_values("workday_gap")
@@ -305,6 +344,10 @@ def build_summary_stat_xlsx(ann_df: pd.DataFrame, plan_df: pd.DataFrame):
         by_category.to_excel(writer, sheet_name="分组2_按品种", index=False)
         by_province.to_excel(writer, sheet_name="分组3_按省份", index=False)
         by_province_category.to_excel(writer, sheet_name="分组4_按省份x品种", index=False)
+        by_region.to_excel(writer, sheet_name="分组5_按区域(自定义)", index=False)
+        by_region_category.to_excel(writer, sheet_name="分组6_按区域x品种", index=False)
+        by_weekday.to_excel(writer, sheet_name="分组7_按招标日星期", index=False)
+        by_quarter.to_excel(writer, sheet_name="分组8_按招标日季度(时间趋势)", index=False)
         plan_lead.to_excel(writer, sheet_name="月度季度计划前置周期", index=False)
         anomalies[ANN_EXPORT_COLS].rename(columns=ANN_COLUMN_LABELS).to_excel(
             writer, sheet_name=f"异常值_工作日间隔小于{config.STATUTORY_MIN_WORKDAYS}天", index=False
@@ -322,6 +365,8 @@ def build_summary_stat_xlsx(ann_df: pd.DataFrame, plan_df: pd.DataFrame):
     return out_path, {
         "by_term_category": by_term_category, "by_category": by_category,
         "by_province": by_province, "by_province_category": by_province_category,
+        "by_region": by_region, "by_region_category": by_region_category,
+        "by_weekday": by_weekday, "by_quarter": by_quarter,
         "plan_lead": plan_lead, "anomalies": anomalies,
     }
 

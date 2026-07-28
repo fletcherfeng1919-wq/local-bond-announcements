@@ -57,13 +57,22 @@ def crawl_source(source: dict, use_cache: bool = True, max_pages: int | None = N
     """Crawl one listing channel across its pages, return list of
     {url, title, listing_pub_date, source_name, source_label, doc_type} dicts.
 
-    Listings are newest-first, so an incremental run doesn't need to walk all
-    (up to ~850) pages every time: pagination stops early once either (a)
-    `new_item_target` not-yet-seen items have been collected, or (b)
+    Listings are newest-first, so a "give me N new items" incremental run
+    doesn't need to walk all (up to ~850) pages every time: when
+    `new_item_target` is set, pagination stops early once either (a) that
+    many not-yet-seen items have been collected, or (b)
     `CONSECUTIVE_SEEN_PAGES_STOP` pages in a row contain nothing but items
-    already in `seen_urls` -- a strong signal everything older is old news
-    too. Neither condition applies (so the full site history gets walked) on
-    a from-scratch backfill where `seen_urls` is empty/None."""
+    already in `seen_urls`.
+
+    Both shortcuts are gated on `new_item_target` being set, not just on
+    `seen_urls` being non-empty: a prior run that only pulled the newest N
+    items (rather than exhausting its page range) leaves a *prefix* of pages
+    fully seen followed by entirely-unvisited pages, so "5 seen pages in a
+    row" near the front proves nothing about page 100. Without a target
+    bounding how much this call actually needs, deeper pages must still be
+    walked even if they're beyond a seen prefix -- e.g. an explicit
+    max_pages backfill that intentionally revisits already-partially-seen
+    territory to reach further back in history than any prior run did."""
     seen_urls = seen_urls or set()
     channel_id = source["channel_id"]
     first_url = config.FIRST_PAGE_TPL.format(channel_id=channel_id)
@@ -99,13 +108,14 @@ def crawl_source(source: dict, use_cache: bool = True, max_pages: int | None = N
             continue
         all_items.extend(items)
 
-        if items and all(it["url"] in seen_urls for it in items):
-            consecutive_seen_pages += 1
-            if consecutive_seen_pages >= CONSECUTIVE_SEEN_PAGES_STOP:
-                stop_reason = f"{consecutive_seen_pages} consecutive fully-seen pages"
-                break
-        else:
-            consecutive_seen_pages = 0
+        if new_item_target is not None:
+            if items and all(it["url"] in seen_urls for it in items):
+                consecutive_seen_pages += 1
+                if consecutive_seen_pages >= CONSECUTIVE_SEEN_PAGES_STOP:
+                    stop_reason = f"{consecutive_seen_pages} consecutive fully-seen pages"
+                    break
+            else:
+                consecutive_seen_pages = 0
 
     if failed_pages:
         print(f"[listing_scraper:{source['name']}] {len(failed_pages)} page(s) failed/empty "

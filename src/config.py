@@ -73,6 +73,25 @@ PROVINCES = {
 # (e.g. must try "新疆生产建设兵团" before "新疆维吾尔自治区" is ruled out).
 PROVINCE_NAMES_BY_LEN_DESC = sorted(PROVINCES.keys(), key=len, reverse=True)
 
+# Five-region grouping, taken from the user's own Wind terminal custom
+# region-group setup (a market-convention grouping used for cross-region
+# spread/liquidity comparison, not strict geography -- e.g. 青岛 sits in
+# 华北西南 rather than with the other coastal cities). Two entries in
+# 中原西北 were truncated behind a "+2..." in the screenshot; inferred as
+# 西藏自治区 and 新疆生产建设兵团 since they're the only two names in
+# PROVINCES not otherwise accounted for across the five groups -- flagged
+# as an inference (not read directly) in the report.
+REGION_GROUPS = {
+    "北上广深": ["北京市", "上海市", "广东省", "浙江省", "江苏省"],
+    "东部沿海": ["深圳市", "宁波市", "福建省", "厦门市", "山东省"],
+    "华北西南": ["青岛市", "山西省", "重庆市", "四川省", "安徽省", "湖南省", "陕西省", "江西省", "河北省"],
+    "中原西北": ["大连市", "海南省", "天津市", "河南省", "宁夏回族自治区", "湖北省", "广西壮族自治区",
+              "新疆维吾尔自治区", "青海省", "甘肃省", "西藏自治区", "新疆生产建设兵团"],
+    "东北内蒙": ["吉林省", "黑龙江省", "辽宁省", "内蒙古自治区", "贵州省", "云南省"],
+}
+PROVINCE_TO_REGION = {p: region for region, provinces in REGION_GROUPS.items() for p in provinces}
+REGION_ORDER = list(REGION_GROUPS.keys())
+
 VALID_TERMS = ["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "25Y", "30Y"]
 
 # Bond category: the three top-level buckets the user wants kept separate.

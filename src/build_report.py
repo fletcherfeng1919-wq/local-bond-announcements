@@ -99,7 +99,61 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
         )
     lines.append("\n完整省份列表见 `local_summary.xlsx`『分组3_按省份』『分组4_按省份x品种』。\n")
 
-    lines.append(f"\n## 五、异常样本清单（工作日间隔 < {config.STATUTORY_MIN_WORKDAYS} 天法定底线）\n")
+    lines.append("\n## 五、发行时间规律：区域分组 / 招标日星期 / 时间趋势\n")
+    by_region = tables.get("by_region")
+    by_weekday = tables.get("by_weekday")
+    by_quarter = tables.get("by_quarter")
+
+    lines.append(
+        "**区域分组**采用用户提供的Wind终端自定义分组（市场惯例分组，非严格地理邻近，如青岛归入"
+        "\"华北西南\"组）。\"中原西北\"组内有2个省份在原始设置截图中被折叠为\"+2...\"，"
+        "根据分组名称与其余4组已覆盖的省份反推，推断为**西藏自治区、新疆生产建设兵团**——"
+        "此为推断而非直接读取，如与实际分组不符请告知以便更正。\n\n"
+    )
+    if by_region is not None and len(by_region):
+        lines.append("| 区域分组 | 样本数 | 平均提前工作日 | 中位数工作日 | 最大 | 最小 |\n")
+        lines.append("|---|---|---|---|---|---|\n")
+        for _, r in by_region.iterrows():
+            lines.append(
+                f"| {r['区域分组']} | {_fmt(r['样本数量'],0)} | {_fmt(r['平均提前工作日'])} | "
+                f"{_fmt(r['中位数提前工作日'],0)} | {_fmt(r['最大提前工作日'],0)} | {_fmt(r['最小提前工作日'],0)} |\n"
+            )
+        lines.append("\n分区域x品种明细见 `local_summary.xlsx`『分组6_按区域x品种』。\n")
+    else:
+        lines.append("（当前样本中区域映射为空，跳过。）\n")
+
+    lines.append("\n**招标日集中在星期几**：地方债招投标是否像国债一样偏好特定工作日，"
+                  "反映一级市场对流动性/机构参与度的时间安排惯例。\n\n")
+    if by_weekday is not None and len(by_weekday):
+        lines.append("| 招标日星期 | 样本数 | 占比 | 平均提前工作日 |\n")
+        lines.append("|---|---|---|---|\n")
+        total_wd = by_weekday["样本数量"].sum()
+        for _, r in by_weekday.iterrows():
+            share = 100 * r["样本数量"] / total_wd if total_wd else 0
+            lines.append(f"| {r['招标日星期']} | {_fmt(r['样本数量'],0)} | {_fmt(share)}% | "
+                          f"{_fmt(r['平均提前工作日'])} |\n")
+    else:
+        lines.append("（暂无可用招标日星期分布数据。）\n")
+
+    lines.append(
+        "\n**按招标日所属季度的时间趋势**：当前样本以近期公告为主（增量抓取从最新公告向历史回溯），"
+        "季度覆盖跨度越大、越能反映真实的年度节奏（如四季度/年末冲量发行是否伴随提前期被压缩）。"
+        "样本覆盖不足4个季度时，本节结论仅供参考，不构成年度规律性结论。\n\n"
+    )
+    if by_quarter is not None and len(by_quarter):
+        lines.append("| 招标日所属季度 | 样本数 | 平均提前工作日 | 中位数工作日 |\n")
+        lines.append("|---|---|---|---|\n")
+        for _, r in by_quarter.iterrows():
+            lines.append(f"| {r['招标日所属季度']} | {_fmt(r['样本数量'],0)} | "
+                          f"{_fmt(r['平均提前工作日'])} | {_fmt(r['中位数提前工作日'],0)} |\n")
+        n_quarters = len(by_quarter)
+        if n_quarters < 4:
+            lines.append(f"\n⚠️ 当前仅覆盖 {n_quarters} 个季度的招标样本，尚不足以判断季节性规律"
+                          "（如年末冲量、跨年度对比），建议在完整多年回溯抓取完成后重新生成本报告。\n")
+    else:
+        lines.append("（暂无可用季度趋势数据。）\n")
+
+    lines.append(f"\n## 六、异常样本清单（工作日间隔 < {config.STATUTORY_MIN_WORKDAYS} 天法定底线）\n")
     if len(anomalies):
         lines.append(f"共 {len(anomalies)} 条，占发行前公告有效样本的 "
                       f"{_fmt(100*len(anomalies)/max(len(valid),1))}%：\n\n")
@@ -116,7 +170,7 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
     else:
         lines.append("本次抓取范围内未发现工作日间隔低于法定底线的样本。\n")
 
-    lines.append("\n## 六、月度/季度发行计划 → 实际招投标日前置周期\n")
+    lines.append("\n## 七、月度/季度发行计划 → 实际招投标日前置周期\n")
     lines.append(
         "发行安排（计划）PDF仅披露月度加总金额，不含具体招标日期，故\"计划公示日距离实际招投标日期\"的"
         "前置周期通过**关联匹配**得到：对每条计划记录，在同一省份、招投标日落在该计划覆盖月份/季度内的"
@@ -136,7 +190,7 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
         lines.append("本次抓取范围内暂无可关联匹配的计划-实际发行样本对（可能是抓取的计划与公告"
                       "时间窗口未重叠，建议加大抓取范围后重新生成）。\n")
 
-    lines.append("\n## 七、数据质量与已知局限\n")
+    lines.append("\n## 八、数据质量与已知局限\n")
     n_warn = (ann_df["warnings"].astype(str).str.len() > 0).sum()
     lines.append(
         f"- 共 {n_warn} / {len(ann_df)} 行发行前公告存在提取警告/备注（详见 local_raw_data.xlsx"
@@ -153,7 +207,7 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
         "- 工作日间隔的节假日判断使用 `chinese_calendar` 开源库，覆盖范围外的年份会返回空值。\n"
     )
 
-    lines.append("\n## 八、图表\n")
+    lines.append("\n## 九、图表\n")
     lines.append("见 `charts/boxplot_workday_gap_by_term.png`：各期限地方债提前工作日分布箱线图"
                   f"（红色虚线为{config.STATUTORY_MIN_WORKDAYS}个工作日法定底线）。\n")
 
