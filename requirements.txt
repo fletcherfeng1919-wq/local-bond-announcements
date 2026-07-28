@@ -1,0 +1,14 @@
+beautifulsoup4==4.15.0
+chinese_calendar==1.11.0
+cn2an==0.5.24
+lxml==6.1.1
+matplotlib==3.11.1
+openpyxl==3.1.5
+pandas==3.0.5
+pdfplumber==0.11.10
+PyMuPDF==1.26.7
+pytesseract==0.3.13
+Pillow
+python-dateutil==2.9.0.post0
+requests==2.34.2
+soupsieve==2.9.1

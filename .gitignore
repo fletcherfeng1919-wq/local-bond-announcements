@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+~$*
+
+# Cached HTML/PDF pages -- large and fully regeneratable by re-running the
+# scraper (main.py re-downloads anything not already in data/raw_html/ or
+# data/raw_pdf/). PDF text/OCR extraction results are also cached as
+# *.pdf.extract.json sidecars next to each PDF, same reasoning.
+data/raw_html/
+data/raw_pdf/
