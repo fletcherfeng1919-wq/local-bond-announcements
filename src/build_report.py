@@ -150,6 +150,15 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
         if n_quarters < 4:
             lines.append(f"\n⚠️ 当前仅覆盖 {n_quarters} 个季度的招标样本，尚不足以判断季节性规律"
                           "（如年末冲量、跨年度对比），建议在完整多年回溯抓取完成后重新生成本报告。\n")
+        else:
+            skewed = by_quarter[by_quarter["平均提前工作日"] - by_quarter["中位数提前工作日"] > 3]
+            if len(skewed):
+                q_list = "、".join(skewed["招标日所属季度"].astype(str))
+                lines.append(
+                    f"\n注：{q_list} 季度的均值明显高于中位数，说明该季度内存在少数极端提前样本"
+                    "（如\"六、异常样本清单\"及第五节区域分组中提到的批量补录/滞后披露案例）拉高了均值，"
+                    "中位数~5天的常态并未系统性改变；不建议将均值抬升解读为该季度普遍的政策性提前。\n"
+                )
     else:
         lines.append("（暂无可用季度趋势数据。）\n")
 
@@ -169,6 +178,33 @@ def build_report(ann_df: pd.DataFrame, plan_df: pd.DataFrame, tables: dict) -> s
                           f"{config.STATUTORY_MIN_WORKDAYS}天』）\n")
     else:
         lines.append("本次抓取范围内未发现工作日间隔低于法定底线的样本。\n")
+
+    EXTREME_HIGH_WORKDAYS = 30
+    high_outliers = ann_df[ann_df["workday_gap"] > EXTREME_HIGH_WORKDAYS].copy().sort_values("workday_gap", ascending=False)
+    lines.append(f"\n## 六(b)、极端过长间隔异常值（工作日间隔 > {EXTREME_HIGH_WORKDAYS} 天）\n")
+    if len(high_outliers):
+        top_province = high_outliers["province"].value_counts().idxmax()
+        top_method = high_outliers["extraction_method"].value_counts().idxmax()
+        lines.append(
+            f"共 {len(high_outliers)} 条，均值/中位数统计已被这类极端值拉高（第二节均值与中位数出现明显"
+            f"差距时应以中位数为准）。这类样本集中在**{top_province}**（{(high_outliers['province']==top_province).sum()}条）"
+            f"、提取方式以**{top_method}**为主（{(high_outliers['extraction_method']==top_method).sum()}条），"
+            "且多数标题年份与公告发布日期相差超过1年——可能是平台对历史存量公告的**批量补录/滞后披露**"
+            "（即多支不同年份发行的债券被合并在同一天集中公示），也可能是OCR从扫描件中读错了招标日期。"
+            "两种情况本报告均无法自动区分真伪，**已从常规统计口径中不做剔除（保留原始值），"
+            "如需更保守的均值估计请在Excel中手动剔除这些行后重新计算**。\n\n"
+        )
+        lines.append("| 公告标题 | 省份 | 公告发布日 | 招投标日 | 工作日间隔 | 提取方式 |\n")
+        lines.append("|---|---|---|---|---|---|\n")
+        for _, r in high_outliers.head(20).iterrows():
+            lines.append(
+                f"| {r['title']} | {_fmt(r['province'])} | {r['pub_date']} | {r['bid_date']} | "
+                f"{_fmt(r['workday_gap'],0)} | {_fmt(r['extraction_method'])} |\n"
+            )
+        if len(high_outliers) > 20:
+            lines.append(f"\n（仅展示前20条，按工作日间隔降序）\n")
+    else:
+        lines.append("本次抓取范围内未发现工作日间隔异常偏高的样本。\n")
 
     lines.append("\n## 七、月度/季度发行计划 → 实际招投标日前置周期\n")
     lines.append(

@@ -152,9 +152,22 @@ def extract_announcement_fields(title, pub_date, url, source_name, doc_type,
     batch_m = BATCH_NO_RE.search(title)
     batch_no = cn_to_int(batch_m.group(1)) if batch_m else None
 
-    bid_date = _find_date(text, DATE_TOKEN + r"[^\n]{0,25}?招标", resolver)
-    payment_date = _find_date(text, DATE_TOKEN + r"[^\n]{0,15}?开始计息", resolver)
-    listing_date = _find_date(text, DATE_TOKEN + r"[^\n]{0,20}?起[^\n]{0,20}?上市", resolver)
+    # These must require the date to sit *immediately* (modulo whitespace/a
+    # bracketed time-of-day) before the anchor phrase, not just "somewhere
+    # within N characters" -- a loose window matched maturity/repayment
+    # dates elsewhere in the document that happened to have the word "招标"
+    # reappear nearby in an unrelated sentence (e.g. "...2050年2月25日偿还
+    # 竞争性招标结束后..." -- 2050 being the 30-year bond's maturity date,
+    # not the auction date). Missing a real bid_date (-> None, flagged in
+    # warnings for manual review) is far safer than silently accepting a
+    # wrong one many years off.
+    TIME_OF_DAY = (
+        r"(?:(?:[上下]午\s*)?\d{1,2}[:：]\d{2}(?:\s*[-–—~]\s*\d{1,2}[:：]\d{2})?\s*"
+        r"(?:为竞争性\s*)?)?"
+    )
+    bid_date = _find_date(text, DATE_TOKEN + r"\s*" + TIME_OF_DAY + r"招标", resolver)
+    payment_date = _find_date(text, DATE_TOKEN + r"\s*(?:起)?\s*开始计息", resolver)
+    listing_date = _find_date(text, DATE_TOKEN + r"\s*起[^\n]{0,20}?上市", resolver)
 
     batch_total_m = (
         re.search(r"计划发行总额\s*([\d,.]+)\s*亿元", text)
@@ -222,9 +235,27 @@ def extract_announcement_fields(title, pub_date, url, source_name, doc_type,
         row["warnings"] = "; ".join(row["warnings"])
         rows.append(row)
 
+    # A real pre-issuance bid date is always within days/weeks of its
+    # announcement -- never years. OCR occasionally garbles the '年'
+    # character (misread as e.g. '和'), which breaks the year match on the
+    # true bid-date mention and lets AnchorYearResolver fall back to some
+    # unrelated year quoted elsewhere in the document (a maturity date,
+    # a repealed-regulation date, etc.), producing dates a decade or more
+    # off. Discarding implausible gaps outright is safer than reporting a
+    # confidently-wrong number.
+    BID_DATE_MAX_ABS_GAP_DAYS = 400
     for row in rows:
         if row["bid_date"] and pub_date:
             gap = (row["bid_date"] - pub_date).days
+            if abs(gap) > BID_DATE_MAX_ABS_GAP_DAYS:
+                extra = (f"招标日期与公告日期相差{gap}天，超出合理范围(可能是OCR将'年'误读为其他字，"
+                         "错误锚定到文中其他年份)，已丢弃该招标日期")
+                row["bid_date"] = None
+                row["base_date_type"] = None
+                row["natural_day_gap"] = None
+                row["workday_gap"] = None
+                row["warnings"] = (row["warnings"] + "; " + extra) if row["warnings"] else extra
+                continue
             row["natural_day_gap"] = gap
             row["workday_gap"] = workday_diff(pub_date, row["bid_date"])
             if gap < 0:
