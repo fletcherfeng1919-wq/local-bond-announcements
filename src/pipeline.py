@@ -152,7 +152,21 @@ def _merge_and_save(kind: str, state: pd.DataFrame, new_rows: list[dict]) -> pd.
     if kind == "announcements":
         dedup_keys = ["url", "issue_no", "term"]
     elif kind == "results":
-        dedup_keys = ["url", "bond_code"]
+        # bond_code is the canonical identity -- the same bond legitimately
+        # gets re-listed across multiple separate 发行结果 announcement URLs
+        # on celma.org.cn (later batch reports re-cite earlier bonds), so a
+        # url-scoped key leaves cross-url duplicates in. But dedup can't run
+        # on bond_code alone either: pandas treats NaN as equal to NaN, so
+        # every pre-2020 legacy-format row (bond_code always null) would
+        # collapse into a single surviving row. Split and dedupe each half
+        # on the key that's actually meaningful for it.
+        coded_mask = state["bond_code"].notna()
+        coded = state[coded_mask].drop_duplicates(subset=["bond_code"], keep="last")
+        uncoded = state[~coded_mask].drop_duplicates(subset=["url"], keep="last")
+        state = pd.concat([coded, uncoded], ignore_index=True)
+        state = state.sort_values("pub_date").reset_index(drop=True)
+        save_state(kind, state)
+        return state
     else:
         dedup_keys = ["url"]
     state = state.drop_duplicates(subset=dedup_keys, keep="last")

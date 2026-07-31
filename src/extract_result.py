@@ -53,9 +53,18 @@ def _find_table_columns(header_row: list) -> dict | None:
         for key, needle in wanted.items():
             if needle in c and key not in idx:
                 idx[key] = i
-    if "bond_code" in idx and "term" in idx:
-        return idx
-    return None
+    if "bond_code" not in idx or "term" not in idx:
+        return None
+    # pdfplumber occasionally collapses a whole table into one row where
+    # only column 0 has any text (the rest are None) -- that single cell's
+    # text is the concatenation of everything, so it contains *every*
+    # header keyword as a substring and every key falsely resolves to
+    # column 0. A real header has each field in its own column; requiring
+    # several distinct positions rejects the collapsed-row case outright
+    # rather than silently reading every field from the same blob.
+    if len(set(idx.values())) < 5:
+        return None
+    return idx
 
 
 def _row_get(row: list, idx: dict, key: str) -> str | None:
@@ -141,6 +150,28 @@ def extract_result_fields(title, pub_date, url, source_name, doc_type, pdf_resul
                 "extraction_method": method,
                 "warnings": "本行来自OCR识别，数值型字段准确性需人工核对" if method == "ocr" else "",
             }
+
+            # Column-detection can still misfire in ways _find_table_columns'
+            # distinct-position check doesn't catch (e.g. a merged/shifted
+            # cell within an otherwise well-formed row). A real 债券编码 is
+            # short and numeric-ish; a real coupon and a real deal size fall
+            # in known ranges -- anything else is more likely a stray column
+            # value (a year, a different column's amount) than a real one,
+            # so null it out and flag rather than let it silently pollute
+            # every rate/volume aggregate downstream.
+            row_warnings = []
+            if len(row["bond_code"]) > 12 or not re.fullmatch(r"[\dA-Za-z.]+", row["bond_code"]):
+                row_warnings.append(f"债券编码格式异常({row['bond_code'][:20]})，可能是列错位，已置空")
+                row["bond_code"] = None
+            if row["coupon_rate_pct"] is not None and not (0.1 <= row["coupon_rate_pct"] <= 8.0):
+                row_warnings.append(f"票面利率{row['coupon_rate_pct']}超出合理区间(0.1-8%)，可能是列错位，已置空")
+                row["coupon_rate_pct"] = None
+            if row["total_amount_yi"] is not None and not (0 < row["total_amount_yi"] <= 1500):
+                row_warnings.append(f"发行规模{row['total_amount_yi']}亿元超出合理区间，可能是列错位，已置空")
+                row["total_amount_yi"] = None
+            if row_warnings:
+                row["warnings"] = "; ".join([row["warnings"]] + row_warnings) if row["warnings"] else "; ".join(row_warnings)
+
             rows.append(row)
 
     if not rows:
