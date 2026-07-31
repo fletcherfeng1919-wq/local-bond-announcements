@@ -43,12 +43,28 @@ def fetch(url: str, use_cache: bool = True, session: requests.Session | None = N
     raise RuntimeError(f"Failed to fetch {url} after {config.MAX_RETRIES} attempts: {last_err}")
 
 
+def _is_valid_pdf_bytes(data: bytes) -> bool:
+    """Cheap structural sanity check -- a connection drop mid-download can
+    leave a short-but-nonzero file on disk without requests ever raising
+    (e.g. no Content-Length header, or a close that reads as a clean EOF to
+    urllib3). Such a file passes 'exists and size > 0' forever, permanently
+    poisoning the cache with something pdfplumber can never open. Real PDFs
+    start with the %PDF magic bytes and end with an %%EOF trailer marker
+    (allowing a little trailing whitespace/newlines after it)."""
+    if not data or not data.startswith(b"%PDF"):
+        return False
+    return b"%%EOF" in data[-2048:]
+
+
 def fetch_pdf(url: str, use_cache: bool = True, session: requests.Session | None = None) -> Path:
     """Download a PDF attachment to the on-disk cache (if not already there)
-    and return its local path. Never re-downloads a cached PDF."""
+    and return its local path. Never re-downloads a cached *valid* PDF; a
+    cached file that fails the structural check is treated as missing and
+    re-fetched instead of being trusted forever."""
     cache_file = _cache_path(url, config.RAW_PDF_DIR, ".pdf")
     if use_cache and cache_file.exists() and cache_file.stat().st_size > 0:
-        return cache_file
+        if _is_valid_pdf_bytes(cache_file.read_bytes()):
+            return cache_file
 
     sess = session or requests.Session()
     headers = {"User-Agent": config.USER_AGENT}
@@ -57,7 +73,12 @@ def fetch_pdf(url: str, use_cache: bool = True, session: requests.Session | None
         try:
             resp = sess.get(url, headers=headers, timeout=config.REQUEST_TIMEOUT)
             resp.raise_for_status()
-            cache_file.write_bytes(resp.content)
+            content = resp.content
+            if not _is_valid_pdf_bytes(content):
+                raise requests.RequestException(
+                    f"downloaded content failed PDF structural check ({len(content)} bytes)"
+                )
+            cache_file.write_bytes(content)
             time.sleep(random.uniform(*config.REQUEST_DELAY_RANGE))
             return cache_file
         except requests.RequestException as e:

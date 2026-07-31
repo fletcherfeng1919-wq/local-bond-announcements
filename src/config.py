@@ -7,6 +7,7 @@ RAW_HTML_DIR = DATA_DIR / "raw_html"
 RAW_PDF_DIR = DATA_DIR / "raw_pdf"
 STATE_ANNOUNCEMENTS_CSV = DATA_DIR / "state_announcements.csv"
 STATE_PLANS_CSV = DATA_DIR / "state_plans.csv"
+STATE_RESULTS_CSV = DATA_DIR / "state_results.csv"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CHARTS_DIR = PROJECT_ROOT / "charts"
 
@@ -48,7 +49,20 @@ LISTING_SOURCES = [
         "doc_type": "announcement",
         "detail_url_prefix": "/fxqgg/",
     },
+    {
+        "name": "fxjg",
+        "label": "发行结果（含债券编码/简称的发行结果公开）",
+        "channel_id": "194",
+        "doc_type": "result",
+        "detail_url_prefix": "/fxjg/",
+    },
 ]
+
+# celma.org.cn switched from a free-text 发行结果公告 (no bond code at all) to
+# a standardized 表2-9/表2-10 table (债券编码/债券简称 columns) sometime
+# between 2019-05 and 2020-05; the exact cutover date wasn't pinned down
+# further than that. Results before this are handled in a separate pass.
+RESULT_NEW_FORMAT_START = "2020-01-01"
 
 FIRST_PAGE_TPL = SITE_ROOT + "/zqsclb.jhtml?ad_code=87&channelId={channel_id}"
 PAGE_TPL = SITE_ROOT + "/zqsclb_{n}.jhtml?ad_code=87&channelId={channel_id}"

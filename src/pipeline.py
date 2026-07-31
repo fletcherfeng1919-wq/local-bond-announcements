@@ -15,6 +15,7 @@ from . import config
 from .article_parser import parse_article
 from .extract_announcement import extract_announcement_fields
 from .extract_plan import extract_plan_fields
+from .extract_result import extract_result_fields
 from .http_client import fetch_pdf
 from .listing_scraper import crawl_all_sources
 from .pdf_extract import extract_pdf
@@ -35,12 +36,25 @@ PLAN_COLUMNS = [
     "extraction_method", "warnings",
 ]
 
+RESULT_COLUMNS = [
+    "title", "pub_date", "url", "source_name", "doc_type", "province", "province_code",
+    "bond_name", "bond_code", "bond_short_name", "bond_market_type",
+    "category_code", "category_label", "term", "total_amount_yi",
+    "new_amount_yi", "swap_amount_yi", "refi_amount_yi", "batch_label",
+    "coupon_rate_pct", "issue_date", "value_date", "payment_freq",
+    "redemption_structure", "extraction_method", "warnings",
+]
+
 DATE_COLS = {
     "announcements": ["pub_date", "bid_date", "payment_date", "listing_date"],
     "plans": ["pub_date", "covered_period_start", "covered_period_end"],
+    "results": ["pub_date", "issue_date", "value_date"],
 }
-STATE_PATHS = {"announcements": config.STATE_ANNOUNCEMENTS_CSV, "plans": config.STATE_PLANS_CSV}
-STATE_COLS = {"announcements": ANNOUNCEMENT_COLUMNS, "plans": PLAN_COLUMNS}
+STATE_PATHS = {
+    "announcements": config.STATE_ANNOUNCEMENTS_CSV, "plans": config.STATE_PLANS_CSV,
+    "results": config.STATE_RESULTS_CSV,
+}
+STATE_COLS = {"announcements": ANNOUNCEMENT_COLUMNS, "plans": PLAN_COLUMNS, "results": RESULT_COLUMNS}
 
 
 def load_state(kind: str) -> pd.DataFrame:
@@ -67,9 +81,13 @@ def _pick_primary_pdf(attachments: list[dict], doc_type: str) -> dict | None:
         for a in attachments:
             if "发行公开" in a["name"]:
                 return a
-    else:
+    elif doc_type == "plan":
         for a in attachments:
             if "发行安排" in a["name"]:
+                return a
+    elif doc_type == "result":
+        for a in attachments:
+            if "发行结果" in a["name"]:
                 return a
     return attachments[0]
 
@@ -100,6 +118,11 @@ def process_listing_item(item: dict, use_cache: bool = True) -> tuple[list[dict]
                 article["title"], article["pub_date"], item["url"], item["source_name"],
                 item["doc_type"], pdf_result,
             )
+        elif item["doc_type"] == "result":
+            rows = extract_result_fields(
+                article["title"], article["pub_date"], item["url"], item["source_name"],
+                item["doc_type"], pdf_result,
+            )
         else:
             rows = [extract_plan_fields(
                 article["title"], article["pub_date"], item["url"], item["source_name"],
@@ -126,7 +149,12 @@ def _merge_and_save(kind: str, state: pd.DataFrame, new_rows: list[dict]) -> pd.
             new_df[col] = None
     new_df = new_df[STATE_COLS[kind]]
     state = pd.concat([state, new_df], ignore_index=True)
-    dedup_keys = ["url", "issue_no", "term"] if kind == "announcements" else ["url"]
+    if kind == "announcements":
+        dedup_keys = ["url", "issue_no", "term"]
+    elif kind == "results":
+        dedup_keys = ["url", "bond_code"]
+    else:
+        dedup_keys = ["url"]
     state = state.drop_duplicates(subset=dedup_keys, keep="last")
     state = state.sort_values("pub_date").reset_index(drop=True)
     save_state(kind, state)
@@ -171,14 +199,16 @@ def _run_one_source(kind: str, items: list[dict], use_cache: bool, limit: int | 
 def run(use_cache: bool = True, max_pages: int | None = None, limit: int | None = None,
         verbose: bool = True) -> dict[str, pd.DataFrame]:
     """Crawl+process everything not already in state, append, save, return
-    {"announcements": df, "plans": df}."""
+    {"announcements": df, "plans": df, "results": df}."""
     seen_urls_by_source = {
         "fxqgg": set(load_state("announcements")["url"]),
         "dfzfxjh": set(load_state("plans")["url"]),
+        "fxjg": set(load_state("results")["url"]),
     }
     listings = crawl_all_sources(use_cache=use_cache, max_pages=max_pages,
                                   seen_urls_by_source=seen_urls_by_source, new_item_target=limit)
     result = {}
     result["announcements"] = _run_one_source("announcements", listings["fxqgg"], use_cache, limit, verbose)
     result["plans"] = _run_one_source("plans", listings["dfzfxjh"], use_cache, limit, verbose)
+    result["results"] = _run_one_source("results", listings["fxjg"], use_cache, limit, verbose)
     return result

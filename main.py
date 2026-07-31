@@ -9,7 +9,10 @@ Usage:
 """
 import argparse
 
-from src.build_outputs import build_boxplot, build_raw_data_xlsx, build_summary_stat_xlsx, _prep_announcements, _prep_plans
+from src.build_outputs import (
+    build_boxplot, build_raw_data_xlsx, build_summary_stat_xlsx, build_bond_dictionary_xlsx,
+    _prep_announcements, _prep_plans, _prep_results,
+)
 from src.build_report import build_report
 from src.pipeline import run
 from src import config
@@ -28,13 +31,15 @@ def main():
 
     ann_df = _prep_announcements()
     plan_df = _prep_plans()
-    if ann_df.empty and plan_df.empty:
+    result_df = _prep_results()
+    if ann_df.empty and plan_df.empty and result_df.empty:
         print("data/state_*.csv 为空，没有可用数据，已退出。请先不加 --skip-crawl 运行一次。")
         return
 
     raw_path = build_raw_data_xlsx(ann_df, plan_df)
     summary_path, tables = build_summary_stat_xlsx(ann_df, plan_df)
     boxplot_path = build_boxplot(ann_df)
+    dict_path = build_bond_dictionary_xlsx(result_df) if len(result_df) else None
 
     report_text = build_report(ann_df, plan_df, tables)
     report_path = config.OUTPUT_DIR / "local_report.md"
@@ -46,6 +51,7 @@ def main():
         f"  {summary_path}\n"
         f"  {report_path}\n"
         f"  {boxplot_path}"
+        + (f"\n  {dict_path}" if dict_path else "")
     )
 
 

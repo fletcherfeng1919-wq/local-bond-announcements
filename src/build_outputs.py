@@ -69,6 +69,43 @@ PLAN_COLUMN_LABELS = {
     "warnings": "提取备注/警告",
 }
 
+RESULT_COLUMN_LABELS = {
+    "title": "公告网页标题",
+    "pub_date": "结果公开日期",
+    "url": "公告链接",
+    "source_name": "数据来源栏目",
+    "doc_type": "文件类型",
+    "province": "所属省份/计划单列市",
+    "province_code": "省份代码",
+    "bond_name": "债券名称",
+    "bond_code": "债券编码",
+    "bond_short_name": "债券简称(市场代码)",
+    "bond_market_type": "债券类型(原文)",
+    "category_code": "债券类型代码",
+    "category_label": "债券类型",
+    "term": "发行期限",
+    "total_amount_yi": "发行规模(亿元)",
+    "new_amount_yi": "新增债券(亿元)",
+    "swap_amount_yi": "置换债券(亿元)",
+    "refi_amount_yi": "再融资债券(亿元)",
+    "batch_label": "发行批次",
+    "coupon_rate_pct": "票面利率(%)",
+    "issue_date": "发行日期",
+    "value_date": "起息日",
+    "payment_freq": "付息方式",
+    "redemption_structure": "赎回模式",
+    "extraction_method": "提取方式(text/ocr/unsupported_legacy_format)",
+    "warnings": "提取备注/警告",
+}
+
+RESULT_EXPORT_COLS = [
+    "bond_code", "bond_short_name", "bond_name", "province", "category_label",
+    "term", "total_amount_yi", "new_amount_yi", "swap_amount_yi", "refi_amount_yi",
+    "coupon_rate_pct", "issue_date", "value_date", "payment_freq", "redemption_structure",
+    "batch_label", "bond_market_type", "pub_date", "doc_type", "source_name",
+    "extraction_method", "url", "warnings",
+]
+
 ANN_EXPORT_COLS = [
     "title", "pub_date", "province", "category_label", "category_subtype", "term",
     "batch_no", "issue_no", "issue_no_range", "total_amount_yi", "bid_date",
@@ -93,6 +130,12 @@ def _prep_announcements() -> pd.DataFrame:
 
 def _prep_plans() -> pd.DataFrame:
     return load_state("plans")
+
+
+def _prep_results() -> pd.DataFrame:
+    df = load_state("results")
+    df["term"] = pd.Categorical(df["term"], categories=TERM_ORDER, ordered=True)
+    return df
 
 
 def _autosize(ws, cols, labels):
@@ -212,6 +255,41 @@ def build_raw_data_xlsx(ann_df: pd.DataFrame, plan_df: pd.DataFrame):
         for r in range(2, ws_plan.max_row + 1):
             ws_plan.cell(row=r, column=idx).number_format = "yyyy-mm-dd"
 
+    wb.save(out_path)
+    return out_path
+
+
+# ---------------------------------------------------------------------------
+# local_bond_code_dictionary.xlsx
+# ---------------------------------------------------------------------------
+
+def build_bond_dictionary_xlsx(results_df: pd.DataFrame):
+    """The 发行结果-derived bond_code/bond_short_name lookup table -- one row
+    per bond, usable to join this project's other tables (or Wind/Bloomberg
+    pulls) onto an actual market code instead of a free-text bond name."""
+    out_path = config.OUTPUT_DIR / "local_bond_code_dictionary.xlsx"
+
+    coded = results_df[results_df["bond_code"].notna()].copy()
+    legacy = results_df[results_df["extraction_method"] == "unsupported_legacy_format"].copy()
+
+    coded_export = coded[RESULT_EXPORT_COLS].copy()
+    coded_export = coded_export.astype(object).where(coded_export.notna(), None)
+    coded_export.columns = [RESULT_COLUMN_LABELS[c] for c in RESULT_EXPORT_COLS]
+
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        coded_export.to_excel(writer, sheet_name="债券代码字典", index=False)
+        if len(legacy):
+            legacy_export = legacy[["title", "pub_date", "province", "url"]].copy()
+            legacy_export.columns = ["公告网页标题", "结果公开日期", "所属省份", "公告链接"]
+            legacy_export.to_excel(writer, sheet_name="2020年以前(暂无代码)", index=False)
+
+    from openpyxl import load_workbook
+    wb = load_workbook(out_path)
+    for ws in wb.worksheets:
+        _bold_header(ws)
+        for i, col in enumerate(ws.iter_cols(1, ws.max_column), start=1):
+            header_len = len(str(col[0].value or ""))
+            ws.column_dimensions[get_column_letter(i)].width = max(14, header_len + 4)
     wb.save(out_path)
     return out_path
 
