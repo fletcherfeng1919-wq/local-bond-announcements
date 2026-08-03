@@ -392,6 +392,92 @@
     </div>
   </section>
 
+  <section id="sec-lead-time">
+    <div class="sec-head">
+      <div class="sec-eyebrow">发行前公告规律 · 基于发行前公告数据(3,175条有效样本)</div>
+      <div class="sec-title">86%的公告精确卡在法定5个工作日底线，几乎不留缓冲</div>
+    </div>
+    <p class="finding">
+      公告到招标的提前期分布高度集中——<span class="num">2,730</span>条（占<span class="num">86.0%</span>）恰好是<b>5个工作日</b>（法定最低要求），左右两侧迅速衰减。这说明地方财政部门普遍将公告窗口压在法定底线附近操作，而非提前给市场更多消化时间；期限（1Y–30Y）之间几乎没有差异，区域之间中位数同样一致为5天，但<b>中原西北、东北内蒙的均值明显更高</b>（5.95 / 5.68 天，vs 北上广深4.76天）——说明这两个区域偶尔提前更久公告，尾部更长，而非普遍卡线更紧。
+    </p>
+    <div class="chart-card">
+      <h4>提前工作日分布</h4>
+      <div class="ch-sub">按工作日间隔分桶，红色虚线标注法定5天底线</div>
+      <div class="chart-pos">
+        <svg id="histChart" width="720" height="260" viewBox="0 0 720 260"></svg>
+        <div class="tooltip" id="histTooltip"></div>
+      </div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>按期限</h4>
+        <div class="ch-sub">平均提前工作日（中位数均为5天，故看均值差异）</div>
+        <div class="chart-pos">
+          <svg id="termGapChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="termGapTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>按区域</h4>
+        <div class="ch-sub">平均提前工作日</div>
+        <div class="chart-pos">
+          <svg id="regionGapChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="regionGapTooltip"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-timing-pattern">
+    <div class="sec-head">
+      <div class="sec-eyebrow">招标日时点规律</div>
+      <div class="sec-title">周二周四集中招标，5-6月是全年发行高峰</div>
+    </div>
+    <p class="finding">
+      招标日集中在<b>周二（794次）与周四（801次）</b>，合计占全周的一半；<b>周三反而是全周最少</b>（445次，比周一、周五都低），与许多市场"周三常规询价"的直觉不同。月度分布上，<b>5月（371次）、6月（355次）是全年高峰</b>，12月（119次）明显是全年最低谷（不到高峰月的三分之一）——与"早发行、早使用"的政策导向一致，多数省份把大部分年度额度集中在上半年发行完毕。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>招标日星期分布</h4>
+        <div class="ch-sub">按招标日(bid_date)统计</div>
+        <div class="chart-pos">
+          <svg id="weekdayChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="weekdayTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>招标日月度分布</h4>
+        <div class="ch-sub">按招标日(bid_date)统计</div>
+        <div class="chart-pos">
+          <svg id="monthChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="monthTooltip"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-outliers">
+    <div class="sec-head">
+      <div class="sec-eyebrow">异常值逐条核实 · 非提取错误</div>
+      <div class="sec-title">超长间隔源于平台镜像延迟或批量补录，而非代码bug</div>
+    </div>
+    <p class="finding">
+      对提前期&gt;90个工作日的<span class="num">9</span>条极端样本逐条核对PDF原文（非仅凭正则推断）：内蒙古一条属celma平台公示日晚于PDF内招标日整整一年的"平台镜像延迟"；其余6条集中在新疆/新疆生产建设兵团，表现为<b>多支不同原始年份的债券被平台在同一天集中补录披露</b>。同时对338条低于法定底线的样本做了方法论检验：其OCR占比（38.8%）与全量样本OCR占比（44.3%）基本一致，<b>并未发现OCR识别系统性制造"同日公告同日招标"的假象</b>；抽查的江苏、湖北两条"0天"样本PDF原文均确认为真实读数。
+    </p>
+    <div class="chart-card">
+      <h4>超长提前期样本清单</h4>
+      <div class="ch-sub">工作日间隔 &gt; 90 天，已逐条核实原因</div>
+      <div class="chart-scroll">
+        <table id="outlierTable">
+          <thead>
+            <tr><th>省份</th><th>公告日</th><th>招标日</th><th style="text-align:right">工作日间隔</th><th>核实结论</th></tr>
+          </thead>
+          <tbody id="outlierTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <h3>方法与局限</h3>
     <ul>
@@ -874,10 +960,228 @@
       `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[t]}"></span>${t}</span>`).join('');
   }
 
+  // ---------------- Workday-gap histogram ----------------
+  function drawHist() {
+    const data = {"0":31,"1":21,"2":56,"3":58,"4":172,"5":2730,"6-10":89,"11-20":2,"21+":16};
+    const buckets = ["0","1","2","3","4","5","6-10","11-20","21+"];
+    const colors = themeColors();
+    const svg = document.getElementById('histChart');
+    const W = 720, H = 260, padL = 56, padR = 20, padT = 16, padB = 40;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxV = 2730;
+    const barW = plotW / buckets.length * 0.66;
+    const step = plotW / buckets.length;
+    // log-ish scale would hide the 5-day spike's dominance context, so use sqrt scale for readability
+    const scale = v => Math.sqrt(v / maxV);
+    let html = '';
+    [0, 500, 1500, 2730].forEach(gv => {
+      const yy = padT + plotH - scale(gv) * plotH;
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${yy+4}" text-anchor="end">${gv}</text>`;
+    });
+    buckets.forEach((b, i) => {
+      const v = data[b];
+      const h = scale(v) * plotH;
+      const bx = padL + i * step + step/2 - barW/2;
+      const by = padT + plotH - h;
+      const isFloor = b === '5';
+      html += `<rect class="bar" data-bucket="${b}" data-v="${v}" x="${bx}" y="${by}" width="${barW}" height="${h}" rx="3" fill="${isFloor ? colors.gold : colors.s1}" />`;
+      html += `<text class="axis-label num" x="${bx+barW/2}" y="${H-16}" text-anchor="middle">${b}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('histTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const pct = (100*bar.dataset.v/3175).toFixed(1);
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.bucket}个工作日</span><b class="num">${bar.dataset.v}</b> 条 (${pct}%)`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Lead time by term (mean, bars) ----------------
+  function drawTermGap() {
+    const data = {"1Y":[5.0,5.0,3],"2Y":[5.0,5.0,2],"3Y":[5.0,4.76,29],"5Y":[5.0,4.71,63],"7Y":[5.0,4.72,85],
+      "10Y":[5.0,4.8,142],"15Y":[5.0,4.57,68],"20Y":[5.0,4.78,64],"30Y":[5.0,4.74,90]};
+    const terms = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('termGapChart');
+    const W = 480, padL = 40, padR = 20, padT = 16, padB = 30;
+    const plotW = W - padL - padR;
+    const barW = 24, gap = (plotW - terms.length*barW) / (terms.length-1);
+    const vMin = 4.0, vMax = 5.2;
+    const H = 260, plotH = H - padT - padB;
+    const yScale = v => padT + plotH - ((v-vMin)/(vMax-vMin))*plotH;
+    let html = '';
+    [4.0,4.5,5.0].forEach(gv => {
+      html += `<line class="gridline" x1="${padL}" y1="${yScale(gv)}" x2="${W-padR}" y2="${yScale(gv)}" />`;
+      html += `<text class="axis-label num" x="${padL-6}" y="${yScale(gv)+4}" text-anchor="end">${gv.toFixed(1)}</text>`;
+    });
+    terms.forEach((t,i) => {
+      const [median, mean, n] = data[t];
+      const bx = padL + i*(barW+gap);
+      const by = yScale(mean);
+      const h = (padT+plotH) - by;
+      html += `<rect class="bar" data-term="${t}" data-mean="${mean}" data-median="${median}" data-n="${n}" x="${bx}" y="${by}" width="${barW}" height="${h}" rx="3" fill="${colors.s2}" />`;
+      html += `<text class="axis-label num" x="${bx+barW/2}" y="${H-10}" text-anchor="middle">${t}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('termGapTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.term}</span><b class="num">均值${bar.dataset.mean}天</b> <span class="t-label">中位${bar.dataset.median} · n=${bar.dataset.n}</span>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Lead time by region (mean, bars) ----------------
+  function drawRegionGap() {
+    const data = {"北上广深":[5.0,4.76,387],"东部沿海":[5.0,4.98,682],"华北西南":[5.0,4.8,714],
+      "中原西北":[5.0,5.95,1002],"东北内蒙":[5.0,5.68,390]};
+    const regions = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('regionGapChart');
+    const W = 480, padL = 40, padR = 20, padT = 16, padB = 30;
+    const plotW = W - padL - padR;
+    const barW = 46, gap = (plotW - regions.length*barW) / (regions.length-1);
+    const vMin = 4.0, vMax = 6.2;
+    const H = 260, plotH = H - padT - padB;
+    const yScale = v => padT + plotH - ((v-vMin)/(vMax-vMin))*plotH;
+    let html = '';
+    [4.0,5.0,6.0].forEach(gv => {
+      html += `<line class="gridline" x1="${padL}" y1="${yScale(gv)}" x2="${W-padR}" y2="${yScale(gv)}" />`;
+      html += `<text class="axis-label num" x="${padL-6}" y="${yScale(gv)+4}" text-anchor="end">${gv.toFixed(1)}</text>`;
+    });
+    regions.forEach((r,i) => {
+      const [median, mean, n] = data[r];
+      const bx = padL + i*(barW+gap);
+      const by = yScale(mean);
+      const h = (padT+plotH) - by;
+      html += `<rect class="bar" data-region="${r}" data-mean="${mean}" data-median="${median}" data-n="${n}" x="${bx}" y="${by}" width="${barW}" height="${h}" rx="3" fill="${colors.s3}" />`;
+      html += `<text class="axis-label" x="${bx+barW/2}" y="${H-10}" text-anchor="middle" style="font-size:10.5px">${r}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('regionGapTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.region}</span><b class="num">均值${bar.dataset.mean}天</b> <span class="t-label">中位${bar.dataset.median} · n=${bar.dataset.n}</span>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Weekday distribution ----------------
+  function drawWeekday() {
+    const data = {"周一":579,"周二":794,"周三":445,"周四":801,"周五":551,"周六":2,"周日":3};
+    const days = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('weekdayChart');
+    const W = 480, padL = 40, padR = 16, padT = 16, padB = 30;
+    const plotW = W - padL - padR;
+    const barW = 40, gap = (plotW - days.length*barW) / (days.length-1);
+    const maxV = 850;
+    const H = 260, plotH = H - padT - padB;
+    let html = '';
+    [0,400,800].forEach(gv => {
+      const yy = padT + plotH - (gv/maxV)*plotH;
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-6}" y="${yy+4}" text-anchor="end">${gv}</text>`;
+    });
+    days.forEach((d,i) => {
+      const v = data[d];
+      const bx = padL + i*(barW+gap);
+      const h = (v/maxV)*plotH;
+      const by = padT + plotH - h;
+      const isWeekend = (d==='周六'||d==='周日');
+      html += `<rect class="bar" data-day="${d}" data-v="${v}" x="${bx}" y="${by}" width="${barW}" height="${h}" rx="3" fill="${isWeekend ? colors.inkMuted : colors.s1}" />`;
+      html += `<text class="axis-label" x="${bx+barW/2}" y="${H-10}" text-anchor="middle">${d}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('weekdayTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.day}</span><b class="num">${bar.dataset.v}</b> 次`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Month distribution ----------------
+  function drawMonth() {
+    const data = {"1":204,"2":192,"3":328,"4":302,"5":371,"6":355,"7":258,"8":318,"9":262,"10":233,"11":233,"12":119};
+    const months = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('monthChart');
+    const W = 480, padL = 34, padR = 10, padT = 16, padB = 30;
+    const plotW = W - padL - padR;
+    const barW = plotW/months.length*0.62, step = plotW/months.length;
+    const maxV = 400;
+    const H = 260, plotH = H - padT - padB;
+    let html = '';
+    [0,200,400].forEach(gv => {
+      const yy = padT + plotH - (gv/maxV)*plotH;
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-6}" y="${yy+4}" text-anchor="end">${gv}</text>`;
+    });
+    months.forEach((m,i) => {
+      const v = data[m];
+      const bx = padL + i*step + step/2 - barW/2;
+      const h = (v/maxV)*plotH;
+      const by = padT + plotH - h;
+      html += `<rect class="bar" data-month="${m}" data-v="${v}" x="${bx}" y="${by}" width="${barW}" height="${h}" rx="2.5" fill="${colors.s2}" />`;
+      html += `<text class="axis-label num" x="${bx+barW/2}" y="${H-10}" text-anchor="middle">${m}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('monthTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.month}月</span><b class="num">${bar.dataset.v}</b> 次`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Outlier table ----------------
+  function fillOutlierTable() {
+    const rows = [
+      ["内蒙古自治区","2019-06-21","2020-06-29","253","celma平台公示日晚于PDF内招标日约1年，PDF原文已核实为真实读数——平台镜像延迟，非提取错误"],
+      ["新疆维吾尔自治区","2020-06-03","2020-12-19","137","2019年原本应披露的债券与其他期数被平台在同一天集中补录披露"],
+      ["新疆维吾尔自治区","2020-06-03","2020-12-19","137","同上批次的另一期债券，同一补录事件"],
+      ["新疆维吾尔自治区","2024-04-18","2024-10-27","130","2023年债券的滞后集中披露"],
+      ["新疆生产建设兵团","2023-07-02","2023-11-29","104","2022年债券的滞后集中披露"],
+      ["新疆生产建设兵团","2023-07-02","2023-11-29","104","同上批次的另一期债券，同一补录事件"],
+      ["新疆维吾尔自治区","2020-06-03","2020-10-30","102","2018年债券的滞后集中披露"],
+      ["新疆维吾尔自治区","2020-06-03","2020-10-30","102","同上批次的另一期债券，同一补录事件"],
+      ["新疆生产建设兵团","2023-07-02","2023-11-10","91","2021年债券的滞后集中披露"],
+    ];
+    const tbody = document.getElementById('outlierTableBody');
+    tbody.innerHTML = rows.map(r =>
+      `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num" style="text-align:right">${r[3]}</td><td style="color:var(--ink-muted);font-size:12px">${r[4]}</td></tr>`
+    ).join('');
+  }
+
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
     drawMix(); drawCategory(); drawRegion(); drawVolume();
     drawTspreadRegion(); drawTspreadYear();
+    drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
+    fillOutlierTable();
   }
   drawAll();
   const observer = new MutationObserver(drawAll);
