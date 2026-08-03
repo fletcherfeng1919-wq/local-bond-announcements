@@ -30,7 +30,16 @@ def _term_bucket(text: str) -> str | None:
 def _to_float(s: str | None) -> float | None:
     if not s:
         return None
-    s = s.replace(",", "").replace("\n", "").strip()
+    # Some provinces' PDFs render a stray space around the decimal point
+    # (e.g. "3. 28" instead of "3.28") -- an artifact of how pdfplumber
+    # reconstructs character positions, not a real thousands-style gap
+    # (those are handled by the comma strip). Left unhandled, the regex
+    # fallback below (which stops at non [\d.] characters) truncates to
+    # just "3", silently losing the decimal entirely rather than failing
+    # loudly -- so this must be normalized *before* either parse path.
+    s = re.sub(r"\s+", "", s.replace(",", ""))
+    if not s:
+        return None
     try:
         return float(s)
     except ValueError:
