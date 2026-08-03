@@ -137,6 +137,29 @@
   .v-item { font-size: 13px; color: var(--ink-2); }
   .v-item .v-title { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; }
 
+  /* table of contents */
+  .toc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 24px; margin-bottom: 40px;
+  }
+  .toc-title {
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold);
+    font-weight: 600; margin-bottom: 14px;
+  }
+  .toc-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .toc-group-label { font-size: 11.5px; color: var(--ink-muted); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.02em; }
+  .toc-group ul { list-style: none; margin: 0; padding: 0; }
+  .toc-group li { margin-bottom: 7px; }
+  .toc-group a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
+  .toc-group a:hover { color: var(--gold); }
+  @media (max-width: 640px) { .toc-groups { grid-template-columns: 1fr; } }
+
+  /* section group divider */
+  .group-divider { display: flex; align-items: baseline; gap: 14px; margin: 8px 0 28px; }
+  .group-divider .gd-index { font-size: 12px; color: var(--gold); font-weight: 700; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .group-divider .gd-label { font-size: 17px; font-weight: 600; color: var(--ink); font-family: Georgia, "Songti SC", "STSong", serif; white-space: nowrap; }
+  .group-divider .gd-line { flex: 1; height: 1px; background: var(--border); }
+
   section { margin-bottom: 56px; }
   .sec-head { margin-bottom: 18px; }
   .sec-eyebrow { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.06em; margin-bottom: 6px; }
@@ -206,7 +229,7 @@
   <header>
     <div class="eyebrow">celma.org.cn 结构化数据 · 全国地方政府债券</div>
     <h1>地方政府债券市场分析：2018–2026</h1>
-    <p class="subtitle">基于全国地方政府债券信息公开平台"发行结果"公告抓取并结构化的债券记录，覆盖 37 个省份/计划单列市。数据以确认后的票面利率、债券编码为准，较发行前公告更可靠；本版已完成一轮数据校验并修正两处口径问题（见下方校验说明）。</p>
+    <p class="subtitle">基于全国地方政府债券信息公开平台"发行结果"公告抓取并结构化的债券记录，覆盖 37 个省份/计划单列市。数据以确认后的票面利率、债券编码为准，较发行前公告更可靠；本版已完成一轮数据校验并修正两处口径问题（见文末附录"数据校验说明"）。</p>
     <div class="meta-row">
       <span><b>数据来源</b> celma.org.cn 发行结果公开</span>
       <span><b>覆盖区间</b> 2018-10 ~ 2026-07</span>
@@ -217,7 +240,7 @@
   <div class="primer-card" style="margin-bottom:28px;">
     <h4><span class="primer-tag tag-s1">数据源</span>与<span class="primer-tag tag-s2">工作方法</span></h4>
     <p><b>数据源</b>：① celma.org.cn（中国地方政府债券信息公开平台）"发行结果"栏目——2020年起采用标准化表格，含债券编码/简称/确认票面利率/实际发行规模，是本报告主数据源；同平台"发行前公告""发行安排"栏目用于提前期与月度计划分析。② Wind日度数据（<code style="font-family:inherit">wind_10y30y_spread_toolkit</code>子项目导出，2026-07-30刷新）——10Y/30Y国债活跃券中债估值收益率，用于"地方债vs国债利差"部分。③ 用户提供的Wind终端自定义五区域分组。</p>
-    <p><b>工作方法</b>：网页抓取（Python + requests/BeautifulSoup，限速请求+本地HTML/PDF缓存避免重复请求）→ PDF文本提取（pdfplumber优先，无文字层的扫描件用Tesseract OCR中文简体模型兜底，约3%样本经OCR）→ 正则+表格列名匹配提取结构化字段 → 按债券编码去重（同一债券可能在不同批次公告中重复披露）→ 地方债与国债利差按发行日精确匹配当日活跃券收益率计算。过程中经过三轮数据校验，发现并修复表格列错位、跨公告重复、小数点断行三类提取问题（详见下方"数据校验说明"），修复前后部分统计量有实质性变化，已在报告中如实注明。</p>
+    <p><b>工作方法</b>：网页抓取（Python + requests/BeautifulSoup，限速请求+本地HTML/PDF缓存避免重复请求）→ PDF文本提取（pdfplumber优先，无文字层的扫描件用Tesseract OCR中文简体模型兜底，约3%样本经OCR）→ 正则+表格列名匹配提取结构化字段 → 按债券编码去重（同一债券可能在不同批次公告中重复披露）→ 地方债与国债利差按发行日精确匹配当日活跃券收益率计算。过程中经过三轮数据校验，发现并修复表格列错位、跨公告重复、小数点断行三类提取问题（详见文末附录"数据校验说明"），修复前后部分统计量有实质性变化，已在报告中如实注明。</p>
   </div>
 
   <div class="tiles">
@@ -239,18 +262,51 @@
     </div>
   </div>
 
-  <div class="validation-box">
-    <h3>📋 数据校验说明</h3>
-    <p style="font-size:13px; color:var(--ink-2); margin:0;">
-      发布上一版分析后进行了一轮专门校验，发现并修正了两处问题：<span class="v-flag">发行规模总量已从初版的 83.0 万亿元下修至 57.6 万亿元（-30.6%）</span>。券种利差、区域利差等中位数类结论基本不受影响（重算前后差异 &lt; 3bp），仅总量/计数类统计需要更正。
-    </p>
-    <div class="validation-grid">
-      <div class="v-item"><span class="v-title">① 表格列错位</span>约110行的"票面利率""发行规模"字段被错误填入了年份等无关数值（如"2020"），源于个别省份PDF表格解析时列边界识别失败。已增加列位去重校验+数值合理区间校验（利率0.1–8%，规模0–1500亿元），异常值置空并标记，不再进入统计口径。</div>
-      <div class="v-item"><span class="v-title">② 跨公告重复</span>约1,792行（占比11.2%）的债券编码在两条不同的"发行结果"公告中重复出现——同一支债券被平台在不同批次公告中重复列示。已改为按债券编码（而非"网址+编码"）去重，每支债券仅保留一条记录。</div>
-      <div class="v-item"><span class="v-title">③ 小数点断行</span>甘肃、陕西两省PDF中数字小数点前后出现异常空格（如"3. 28"而非"3.28"），数值兜底解析在空格处截断，甘肃/陕西分别有31%/18%的利率字段被错误读成整数（如"3.28%"读成"3.00%"）。已在数值解析前统一去除内部空白再解析，两省异常占比降至&lt;1%。</div>
-      <div class="v-item"><span class="v-title">④ 校验后确认</span>去重后 0 条重复；票面利率区间收窄至 1.16–4.28%（此前含①③类异常值时均值失真、甚至出现"财政弱省利率低于国债"的反常读数）；债券编码 14,430 条中仅37条为离岸债ISIN格式代码（HK/MO开头，属正常值）。</div>
+  <nav class="toc">
+    <div class="toc-title">目录</div>
+    <div class="toc-groups">
+      <div class="toc-group">
+        <div class="toc-group-label">背景知识</div>
+        <ul>
+          <li><a href="#sec-primer">地方债是什么、分几类、钱花在哪</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-group-label">① 发行 / 公告状态</div>
+        <ul>
+          <li><a href="#sec-lead-time">发行前公告规律</a></li>
+          <li><a href="#sec-timing-pattern">招标日时点规律</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-group-label">② 发行量</div>
+        <ul>
+          <li><a href="#sec-term-volume">分期限发行规模</a></li>
+          <li><a href="#sec-recent-volume">2022年以来发行规模</a></li>
+          <li><a href="#sec-mix">发行结构时间序列</a></li>
+          <li><a href="#sec-volume">发行规模趋势</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-group-label">③ 利差</div>
+        <ul>
+          <li><a href="#sec-curve">收益率曲线演变</a></li>
+          <li><a href="#sec-keyterm">关键期限时间序列</a></li>
+          <li><a href="#sec-category">券种利差</a></li>
+          <li><a href="#sec-region">区域利差</a></li>
+          <li><a href="#sec-treasury-spread">地方债 vs 国债利差</a></li>
+          <li><a href="#sec-research-context">结合市场研究框架的解读</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-group-label">附录</div>
+        <ul>
+          <li><a href="#sec-outliers">异常值逐条核实</a></li>
+          <li><a href="#sec-appendix-validation">数据校验说明</a></li>
+        </ul>
+      </div>
     </div>
-  </div>
+  </nav>
 
   <section id="sec-primer">
     <div class="sec-head">
@@ -259,6 +315,9 @@
     </div>
     <p class="primer-intro">
       地方政府债券（简称"地方债"）是省级政府（含5个计划单列市：深圳、大连、宁波、厦门、青岛）以自身信用为担保、纳入预算管理公开发行的债券，用于弥补财政资金缺口或建设特定项目。<b>2015年之前，地方政府不能直接发债</b>，只能通过融资平台（"城投公司"）间接举债，形成了大量游离于预算外的隐性债务；2014年新《预算法》实施后，地方政府获得自主发债权限，地方债才成为规范化、市场化的直接融资工具，与"城投债"（企业信用、非政府直接负债）是两类不同性质的债券，不应混淆。
+    </p>
+    <p class="primer-intro">
+      一个常见的疑问是<b>普通地级市能不能自己发地方债</b>——不能。中国现行体制下，具备独立发债资格的只有<b>省级政府</b>（省、自治区、直辖市）和<b>5个计划单列市</b>（深圳、大连、宁波、厦门、青岛，财政体制上"比照省级"单列），普通地级市（如苏州、无锡、洛阳）无权自行发行地方债，其辖区内的债务需求由所在省统一发行、统一披露；地级市园区或城投公司若要融资，只能通过企业信用的"城投债"这条完全不同的渠道。下方以浙江省为例，用实际数据说明这一层级结构。
     </p>
 
     <div class="primer-grid">
@@ -284,6 +343,25 @@
       </div>
     </div>
 
+    <div class="primer-card" style="margin-bottom:22px;">
+      <h4><span class="primer-tag tag-gold">举例</span>浙江省 vs 宁波市——省级发行人与计划单列市的层级差异</h4>
+      <p>
+        <b>浙江省本级</b>：本报告收录 <span class="num">452</span> 条以"浙江省"为发行人的记录，覆盖专项新增债券 <span class="num">328</span> 条、再融资债券 <span class="num">103</span> 条、一般新增债券 <span class="num">21</span> 条；期限以10年期（<span class="num">123</span>条）、15年期（<span class="num">73</span>条）、20年期（<span class="num">67</span>条）为主。全部452条记录<b>无一以具体地级市/区县命名</b>（如不存在"杭州市XX债""温州市XX债"），印证了浙江省内普通地级市并不独立发行地方债，全部由省级统一发行、统一披露。
+      </p>
+      <p>
+        <b>宁波市（计划单列市）</b>：宁波市地理上属于浙江省，但作为5个计划单列市之一，财政体制上"比照省级"单列——本报告收录 <span class="num">219</span> 条以"宁波市"（而非"浙江省"）为独立发行人的记录，与浙江省本级<b>完全分开披露、分开统计</b>，是数据集中"确有地级层面发行人，但仅限计划单列市"这一规律的直接例证。
+      </p>
+      <div class="primer-table-wrap" style="margin-top:14px;">
+        <table class="primer-table">
+          <thead><tr><th>发行人</th><th>性质</th><th>样本量</th><th>券种构成</th></tr></thead>
+          <tbody>
+            <tr><td>浙江省</td><td>省级政府</td><td>452条</td><td>专项新增328 / 再融资103 / 一般新增21</td></tr>
+            <tr><td>宁波市</td><td>计划单列市（比照省级）</td><td>219条</td><td>与浙江省本级各自独立统计，不合并</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="primer-table-wrap">
       <table class="primer-table">
         <thead><tr><th>标准化期限</th><th>覆盖范围</th><th>典型用途倾向</th></tr></thead>
@@ -296,251 +374,7 @@
     </div>
   </section>
 
-  <section id="sec-curve">
-    <div class="sec-head">
-      <div class="sec-eyebrow">收益率曲线演变 · 全周期截面对比</div>
-      <div class="sec-title">利率整体下行，曲线整体变陡，但长端反而变平</div>
-    </div>
-    <p class="finding">
-      各期限票面利率中位数从2020年到2026年<b>全线下移</b>——10年期从<span class="num">3.22%</span>降至<span class="num">1.88%</span>，30年期从<span class="num">3.92%</span>降至<span class="num">2.45%</span>。
-      2年至30年的整体利差从2020年的<span class="num">0.77pp</span>走阔到2026年的<span class="num">1.13pp</span>，短端下行更快，曲线整体在变陡。
-      但拆开看，<b>陡峭化几乎全部来自1年至10年段</b>：10年至30年的期限溢价反而从2020年的<span class="num">0.70pp</span>压缩到2024年的<span class="num">0.16pp</span>，直到2025年才略微回升至<span class="num">0.36pp</span>（详见下方"关键期限"图表）。
-    </p>
-    <div class="chart-card">
-      <div class="chart-pos">
-        <div class="chart-scroll">
-          <svg id="curveChart" width="720" height="320" viewBox="0 0 720 320"></svg>
-        </div>
-        <div class="tooltip" id="curveTooltip"></div>
-      </div>
-      <div class="legend" id="curveLegend"></div>
-    </div>
-  </section>
-
-  <section id="sec-keyterm">
-    <div class="sec-head">
-      <div class="sec-eyebrow">关键期限时间序列 · 10Y / 20Y / 30Y，2019–2025全年度</div>
-      <div class="sec-title">长端流动性明显改善，样本量三年近乎翻倍</div>
-    </div>
-    <p class="finding">
-      10年期样本量从2019年的<span class="num">210</span>笔增长到2025年的<span class="num">633</span>笔，20年、30年期同样有显著增长（30年期从65笔增至415笔）——长端地方债的发行密度和可观测流动性都在明显提升，中位数估计的可信度也随样本量提升而增强。
-    </p>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h4>票面利率</h4>
-        <div class="ch-sub">10Y / 20Y / 30Y 中位数，按年度</div>
-        <div class="chart-pos">
-          <svg id="keytermRateChart" width="480" height="260" viewBox="0 0 480 260"></svg>
-          <div class="tooltip" id="keytermRateTooltip"></div>
-        </div>
-        <div class="legend" id="keytermRateLegend"></div>
-      </div>
-      <div class="chart-card">
-        <h4>期限溢价</h4>
-        <div class="ch-sub">30Y − 10Y 票面利率之差</div>
-        <div class="chart-pos">
-          <svg id="premiumChart" width="480" height="260" viewBox="0 0 480 260"></svg>
-          <div class="tooltip" id="premiumTooltip"></div>
-        </div>
-      </div>
-    </div>
-    <div class="chart-card">
-      <h4>样本量（流动性代理指标）</h4>
-      <div class="ch-sub">10Y / 20Y / 30Y 各年发行笔数</div>
-      <div class="chart-pos">
-        <svg id="keytermCountChart" width="960" height="220" viewBox="0 0 960 220"></svg>
-        <div class="tooltip" id="keytermCountTooltip"></div>
-      </div>
-      <div class="legend" id="keytermCountLegend"></div>
-    </div>
-  </section>
-
-  <section id="sec-term-volume">
-    <div class="sec-head">
-      <div class="sec-eyebrow">分期限发行规模 · 按期限 x 年份</div>
-      <div class="sec-title">10年期发行量最大，但20/30年期增速远超其他期限</div>
-    </div>
-    <p class="finding">
-      按累计发行规模看，<b>10年期以15.7万亿元居首</b>（占全部规模的27%），其次是30年期（9.4万亿）、7年期（9.3万亿）；1年、2年期规模很小（合计不到0.3万亿），说明地方债本身就不是短久期品种。
-      更值得关注的是<b>期限结构在拉长</b>：30年期规模从2019年的3,599亿元增长到2025年的20,579亿元，<b>增长约5.7倍</b>；20年期从1,131亿元增长到15,033亿元，<b>增长约13.3倍</b>，增速远超10年期（约4.5倍）及其他中短期限——与"优化债务期限结构、减少滚动续发压力"的政策导向一致。
-    </p>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h4>累计发行规模</h4>
-        <div class="ch-sub">全周期，按期限（万亿元）</div>
-        <div class="chart-pos">
-          <svg id="termVolumeChart" width="480" height="280" viewBox="0 0 480 280"></svg>
-          <div class="tooltip" id="termVolumeTooltip"></div>
-        </div>
-      </div>
-      <div class="chart-card">
-        <h4>期限结构演变</h4>
-        <div class="ch-sub">10Y / 15Y / 20Y / 30Y 发行规模，按年度（万亿元）</div>
-        <div class="chart-pos">
-          <svg id="termVolumeYearChart" width="480" height="280" viewBox="0 0 480 280"></svg>
-          <div class="tooltip" id="termVolumeYearTooltip"></div>
-        </div>
-        <div class="legend" id="termVolumeYearLegend"></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="sec-recent-volume">
-    <div class="sec-head">
-      <div class="sec-eyebrow">2022年以来发行规模 · 分期限 / 分地区</div>
-      <div class="sec-title">总量逐年稳步扩大，中原西北与华北西南规模领先（受省份数量影响）</div>
-    </div>
-    <p class="finding">
-      2022–2025年全年发行总量从<span class="num">6.89万亿</span>稳步增至<span class="num">9.67万亿</span>元；2026年（<span style="color:var(--bad)">仅统计至7月，未满一年</span>）已达6.28万亿，若按此节奏全年化预计将继续增长。
-      分期限看，10年期各年均是规模最大的单一期限（2025年2.65万亿），但期限结构持续拉长的趋势在2022年后依然延续。
-      分地区看，<b>中原西北、华北西南两组规模领先</b>，但这两组涵盖省份数量也最多（分别为12省、9省），总量领先很大程度上是"省份数量多"而非"单省发行力度更大"，与此前"利差分析"中北上广深单券定价更紧但总量偏小的结构相互印证。
-    </p>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h4>分期限发行规模</h4>
-        <div class="ch-sub">2022–2026年（2026年仅至7月），按期限（万亿元）</div>
-        <div class="chart-pos">
-          <svg id="recentTermChart" width="480" height="280" viewBox="0 0 480 280"></svg>
-          <div class="tooltip" id="recentTermTooltip"></div>
-        </div>
-        <div class="legend" id="recentTermLegend"></div>
-      </div>
-      <div class="chart-card">
-        <h4>分地区发行规模</h4>
-        <div class="ch-sub">2022–2026年（2026年仅至7月），按区域（万亿元）</div>
-        <div class="chart-pos">
-          <svg id="recentRegionChart" width="480" height="280" viewBox="0 0 480 280"></svg>
-          <div class="tooltip" id="recentRegionTooltip"></div>
-        </div>
-        <div class="legend" id="recentRegionLegend"></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="sec-mix">
-    <div class="sec-head">
-      <div class="sec-eyebrow">发行结构时间序列 · 按年份</div>
-      <div class="sec-title">再融资占比从三成升至五成一，2023年是分水岭</div>
-    </div>
-    <p class="finding">
-      再融资债券占全年发行规模的比例从2020年的<span class="num">30.3%</span>一路升至2023年的<span class="num">51.8%</span>，之后维持在48–51%的高位，<b>2023年是明显的结构性拐点</b>，与全国特殊再融资债券化解隐性债务的政策窗口高度吻合。专项新增债券占比则从2020年的55.1%回落至2025年的43.7%。
-    </p>
-    <div class="chart-card">
-      <div class="chart-pos">
-        <div class="chart-scroll">
-          <svg id="mixChart" width="680" height="280" viewBox="0 0 680 280"></svg>
-        </div>
-        <div class="tooltip" id="mixTooltip"></div>
-      </div>
-      <div class="legend" id="mixLegend"></div>
-    </div>
-  </section>
-
-  <section id="sec-category">
-    <div class="sec-head">
-      <div class="sec-eyebrow">券种利差 · 10年期口径，校验后重算</div>
-      <div class="sec-title">再融资债券定价明显更紧</div>
-    </div>
-    <p class="finding">
-      同为10年期，<b>再融资债券</b>中位票面利率仅<span class="num">2.31%</span>，比专项新增债券（<span class="num">2.93%</span>）低约<span class="num">62bp</span>，比一般新增债券（<span class="num">2.68%</span>）低约<span class="num">37bp</span>——市场对偿债置换类债券的定价持续更为友好。（数据校验后该结论与初版基本一致，差异&lt;3bp）
-    </p>
-    <div class="chart-card">
-      <div class="chart-pos">
-        <svg id="categoryChart" width="640" height="200" viewBox="0 0 640 200"></svg>
-        <div class="tooltip" id="categoryTooltip"></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="sec-region">
-    <div class="sec-head">
-      <div class="sec-eyebrow">区域利差 · 10年期，2023–2026</div>
-      <div class="sec-title">东部沿海定价最紧，中原西北最松</div>
-    </div>
-    <p class="finding">
-      按用户提供的Wind区域分组，东部沿海10年期中位利率<span class="num">2.04%</span>为五组最低，中原西北<span class="num">2.18%</span>最高，区域利差约<span class="num">14bp</span>——与地区财政实力/流动性预期大体一致，但幅度并不悬殊。
-    </p>
-    <div class="chart-card">
-      <div class="chart-pos">
-        <svg id="regionChart" width="640" height="220" viewBox="0 0 640 220"></svg>
-        <div class="tooltip" id="regionTooltip"></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="sec-treasury-spread">
-    <div class="sec-head">
-      <div class="sec-eyebrow">地方债 vs 国债利差 · 按发行日匹配活跃券中债估值收益率</div>
-      <div class="sec-title">同一区域排序在两套独立口径下复现</div>
-    </div>
-    <p class="finding">
-      将每支地方债的票面利率，与其发行日当天10Y/30Y"活跃券"的中债估值收益率（yield_cnbd，数据源自 <code style="font-family:inherit">wind_10y30y_spread_toolkit</code> 子项目）逐笔匹配（5,485/5,536笔成功匹配，匹配率<span class="num">99.1%</span>），计算发行利差。
-      <b>区域排序与上一节纯票面利率口径完全一致</b>——北上广深最紧（10Y中位<span class="num">11.6bp</span>），东北内蒙最松（10Y中位<span class="num">21.9bp</span>）——两套独立方法互相印证，说明区域分层是稳健的市场特征，而非某一口径的统计噪音。
-      时间维度上更值得关注：利差从2019–2021年的~26bp<b>持续压缩到2024年的~8–10bp</b>，随后在2025年<b>明显走阔回升至15–21bp</b>，10Y、30Y两个期限走势高度一致。
-    </p>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h4>区域利差</h4>
-        <div class="ch-sub">10Y / 30Y 中位利差(bp)，按区域</div>
-        <div class="chart-pos">
-          <svg id="tspreadRegionChart" width="480" height="260" viewBox="0 0 480 260"></svg>
-          <div class="tooltip" id="tspreadRegionTooltip"></div>
-        </div>
-        <div class="legend" id="tspreadRegionLegend"></div>
-      </div>
-      <div class="chart-card">
-        <h4>利差时间序列</h4>
-        <div class="ch-sub">10Y / 30Y 中位利差(bp)，按发行年份</div>
-        <div class="chart-pos">
-          <svg id="tspreadYearChart" width="480" height="260" viewBox="0 0 480 260"></svg>
-          <div class="tooltip" id="tspreadYearTooltip"></div>
-        </div>
-        <div class="legend" id="tspreadYearLegend"></div>
-      </div>
-    </div>
-    <div class="chart-card">
-      <h4>区域利差 x 年份（10Y）</h4>
-      <div class="ch-sub">拆到逐年看：北上广深连续4年最紧，"最松"区域每年轮动，2024年全区域同步压缩</div>
-      <div class="chart-pos">
-        <svg id="tspreadRegionYearChart" width="720" height="260" viewBox="0 0 720 260"></svg>
-        <div class="tooltip" id="tspreadRegionYearTooltip"></div>
-      </div>
-      <div class="legend" id="tspreadRegionYearLegend"></div>
-    </div>
-  </section>
-
-  <section id="sec-research-context">
-    <div class="sec-head">
-      <div class="sec-eyebrow">结合市场研究框架的解读</div>
-      <div class="sec-title">利差压缩与"一揽子化债"政策窗口吻合，但截面检验不支持简单机械关系</div>
-    </div>
-    <p class="finding">
-      地方债相对国债长期存在正利差，市场普遍将其归因于<b>流动性溢价</b>——尽管两者同享税收优惠且隐含中央信用支撑，但地方债二级市场换手率远低于国债，投资者需要额外补偿换取流动性折让；本报告样本中利差始终为正（10Y中位<span class="num">17.0bp</span>，30Y中位<span class="num">18.0bp</span>）且从未收敛到零，与这一解释相符。区域分层则通常被归因于<b>地方财政实力与隐性债务认知差异</b>——市场对财政强省（如江浙沪）与债务压力较大地区的城投/隐性债务风险定价不同，本报告"北上广深最紧、东北内蒙最松"的结果与该框架一致，且经coupon直接对比与国债利差两套独立口径互相验证。
-    </p>
-    <p class="finding" style="margin-top:14px;">
-      2023–2024年利差压缩期，时间上与2023年7月中央政治局会议提出"一揽子化债方案"后启动的<b>特殊再融资债券</b>发行高峰高度重合——本报告数据显示再融资债券发行占比同期从37%跳升至52%（详见"发行结构时间序列"）。将其解读为"化债政策提振市场对地方信用的信心，进而压缩利差"是一种自然但需要谨慎验证的假设。
-      <b>为此本报告直接做了检验</b>：按省份计算2023–2025年再融资债券发行占比与平均利差的相关系数，结果仅为<span class="num">0.12</span>（36个省份样本），<b>相关性很弱，不支持"某省当年再融资占比越高、利差压缩越多"的简单机械关系</b>。更合理的解释是：2022–2024年的压缩更可能是全市场共同的风险偏好/政策信心变化（几乎所有区域同步压缩，而非哪个省化债力度大就压缩更多），区域间的利差差异本身则主要由更持久的财政实力差距决定，而非当年再融资发行节奏。2025年利差转而走阔，可能与当年发行供给量显著放大（详见"发行规模趋势"，2025年再融资规模达4.68万亿的历史新高）对二级市场消化能力形成压力有关，但受限于数据维度，本报告不对此单独作因果检验。
-    </p>
-  </section>
-
-  <section id="sec-volume">
-    <div class="sec-head">
-      <div class="sec-eyebrow">发行规模趋势 · 按年份 x 券种，校验后重算</div>
-      <div class="sec-title">再融资债券规模五年近乎翻五倍</div>
-    </div>
-    <p class="finding">
-      再融资债券年度发行规模从2019年的<span class="num">0.96万亿</span>增长到2025年的<span class="num">4.68万亿</span>，增幅约4.9倍（此前未去重版本因重复计入被高估）。专项新增债券始终是发行主力，一般新增债券规模相对稳定在年均6,500–8,900亿元区间。
-    </p>
-    <div class="chart-card">
-      <div class="chart-pos">
-        <div class="chart-scroll">
-          <svg id="volumeChart" width="680" height="300" viewBox="0 0 680 300"></svg>
-        </div>
-        <div class="tooltip" id="volumeTooltip"></div>
-      </div>
-      <div class="legend" id="volumeLegend"></div>
-    </div>
-  </section>
+  <div class="group-divider"><span class="gd-index">01</span><span class="gd-label">发行 / 公告状态</span><span class="gd-line"></span></div>
 
   <section id="sec-lead-time">
     <div class="sec-head">
@@ -606,6 +440,279 @@
     </div>
   </section>
 
+  <div class="group-divider"><span class="gd-index">02</span><span class="gd-label">发行量</span><span class="gd-line"></span></div>
+
+  <section id="sec-term-volume">
+    <div class="sec-head">
+      <div class="sec-eyebrow">分期限发行规模 · 按期限 x 年份</div>
+      <div class="sec-title">10年期发行量最大，但20/30年期增速远超其他期限</div>
+    </div>
+    <p class="finding">
+      按累计发行规模看，<b>10年期以15.7万亿元居首</b>（占全部规模的27%），其次是30年期（9.4万亿）、7年期（9.3万亿）；1年、2年期规模很小（合计不到0.3万亿），说明地方债本身就不是短久期品种。
+      更值得关注的是<b>期限结构在拉长</b>：30年期规模从2019年的3,599亿元增长到2025年的20,579亿元，<b>增长约5.7倍</b>；20年期从1,131亿元增长到15,033亿元，<b>增长约13.3倍</b>，增速远超10年期（约4.5倍）及其他中短期限——与"优化债务期限结构、减少滚动续发压力"的政策导向一致。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>累计发行规模</h4>
+        <div class="ch-sub">全周期，按期限（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="termVolumeChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="termVolumeTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>期限结构演变</h4>
+        <div class="ch-sub">10Y / 15Y / 20Y / 30Y 发行规模，按年度（万亿元，*2026仅至7月）</div>
+        <div class="chart-pos">
+          <svg id="termVolumeYearChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="termVolumeYearTooltip"></div>
+        </div>
+        <div class="legend" id="termVolumeYearLegend"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-recent-volume">
+    <div class="sec-head">
+      <div class="sec-eyebrow">2022年以来发行规模 · 分期限 / 分地区</div>
+      <div class="sec-title">总量逐年稳步扩大，中原西北与华北西南规模领先（受省份数量影响）</div>
+    </div>
+    <p class="finding">
+      2022–2025年全年发行总量从<span class="num">6.89万亿</span>稳步增至<span class="num">9.67万亿</span>元；2026年（<span style="color:var(--bad)">仅统计至7月，未满一年</span>）已达6.28万亿，若按此节奏全年化预计将继续增长。
+      分期限看，10年期各年均是规模最大的单一期限（2025年2.65万亿），但期限结构持续拉长的趋势在2022年后依然延续。
+      分地区看，<b>中原西北、华北西南两组规模领先</b>，但这两组涵盖省份数量也最多（分别为12省、9省），总量领先很大程度上是"省份数量多"而非"单省发行力度更大"，与此前"利差分析"中北上广深单券定价更紧但总量偏小的结构相互印证。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>分期限发行规模</h4>
+        <div class="ch-sub">2022–2026年（2026年仅至7月），按期限（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="recentTermChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="recentTermTooltip"></div>
+        </div>
+        <div class="legend" id="recentTermLegend"></div>
+      </div>
+      <div class="chart-card">
+        <h4>分地区发行规模</h4>
+        <div class="ch-sub">2022–2026年（2026年仅至7月），按区域（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="recentRegionChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="recentRegionTooltip"></div>
+        </div>
+        <div class="legend" id="recentRegionLegend"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-mix">
+    <div class="sec-head">
+      <div class="sec-eyebrow">发行结构时间序列 · 按年份（2026仅至7月）</div>
+      <div class="sec-title">再融资占比从三成升至五成七，2026年继续创新高</div>
+    </div>
+    <p class="finding">
+      再融资债券占全年发行规模的比例从2020年的<span class="num">30.3%</span>一路升至2023年的<span class="num">51.8%</span>，之后维持在48–51%的高位；2026年至今（<span style="color:var(--bad)">仅统计至7月</span>）进一步升至<span class="num">56.9%</span>，<b>并未如2024–2025年那样进入平台期，而是继续创新高</b>，与全国特殊再融资债券化解隐性债务的政策窗口高度吻合。专项新增债券占比则从2020年的55.1%持续回落至2026年的36.5%。
+    </p>
+    <div class="chart-card">
+      <div class="chart-pos">
+        <div class="chart-scroll">
+          <svg id="mixChart" width="720" height="280" viewBox="0 0 720 280"></svg>
+        </div>
+        <div class="tooltip" id="mixTooltip"></div>
+      </div>
+      <div class="legend" id="mixLegend"></div>
+    </div>
+  </section>
+
+  <section id="sec-volume">
+    <div class="sec-head">
+      <div class="sec-eyebrow">发行规模趋势 · 按年份 x 券种，校验后重算（2026仅至7月）</div>
+      <div class="sec-title">再融资债券规模五年近乎翻五倍，2026年7个月已达3.56万亿</div>
+    </div>
+    <p class="finding">
+      再融资债券年度发行规模从2019年的<span class="num">0.96万亿</span>增长到2025年的<span class="num">4.68万亿</span>，增幅约4.9倍（此前未去重版本因重复计入被高估）。专项新增债券始终是发行主力，一般新增债券规模相对稳定在年均6,500–8,900亿元区间。
+      2026年至今（<span style="color:var(--bad)">仅7个月，未满一年</span>）再融资债券已发行<span class="num">3.56万亿</span>，若按此节奏全年化将大概率超过2025年全年水平，与前一节"占比继续创新高"的结论一致。
+    </p>
+    <div class="chart-card">
+      <div class="chart-pos">
+        <div class="chart-scroll">
+          <svg id="volumeChart" width="720" height="300" viewBox="0 0 720 300"></svg>
+        </div>
+        <div class="tooltip" id="volumeTooltip"></div>
+      </div>
+      <div class="legend" id="volumeLegend"></div>
+    </div>
+  </section>
+
+  <div class="group-divider"><span class="gd-index">03</span><span class="gd-label">利差</span><span class="gd-line"></span></div>
+
+  <section id="sec-curve">
+    <div class="sec-head">
+      <div class="sec-eyebrow">收益率曲线演变 · 全周期截面对比</div>
+      <div class="sec-title">利率整体下行，曲线整体变陡，但长端反而变平</div>
+    </div>
+    <p class="finding">
+      各期限票面利率中位数从2020年到2026年<b>全线下移</b>——10年期从<span class="num">3.22%</span>降至<span class="num">1.88%</span>，30年期从<span class="num">3.92%</span>降至<span class="num">2.45%</span>。
+      2年至30年的整体利差从2020年的<span class="num">0.77pp</span>走阔到2026年的<span class="num">1.13pp</span>，短端下行更快，曲线整体在变陡。
+      但拆开看，<b>陡峭化几乎全部来自1年至10年段</b>：10年至30年的期限溢价反而从2020年的<span class="num">0.70pp</span>压缩到2024年的<span class="num">0.16pp</span>，直到2025年才略微回升至<span class="num">0.36pp</span>（详见下方"关键期限"图表）。
+    </p>
+    <div class="chart-card">
+      <div class="chart-pos">
+        <div class="chart-scroll">
+          <svg id="curveChart" width="720" height="320" viewBox="0 0 720 320"></svg>
+        </div>
+        <div class="tooltip" id="curveTooltip"></div>
+      </div>
+      <div class="legend" id="curveLegend"></div>
+    </div>
+  </section>
+
+  <section id="sec-keyterm">
+    <div class="sec-head">
+      <div class="sec-eyebrow">关键期限时间序列 · 10Y / 20Y / 30Y，2019–2026（2026仅至7月）</div>
+      <div class="sec-title">长端流动性明显改善，20/30年期票面利率2026年双双回升</div>
+    </div>
+    <p class="finding">
+      10年期样本量从2019年的<span class="num">210</span>笔增长到2025年的<span class="num">633</span>笔，20年、30年期同样有显著增长（30年期从65笔增至415笔）——长端地方债的发行密度和可观测流动性都在明显提升，中位数估计的可信度也随样本量提升而增强。
+      2026年至今（<span style="color:var(--bad)">仅7个月，未满一年</span>）走势出现分化：10年期票面利率基本走平（1.89%→1.88%），但20年期（2.20%→2.41%）、30年期（2.25%→2.45%）均<b>逆势回升</b>，与下方期限溢价2025年以来的走阔趋势相互印证。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>票面利率</h4>
+        <div class="ch-sub">10Y / 20Y / 30Y 中位数，按年度（*2026仅至7月）</div>
+        <div class="chart-pos">
+          <svg id="keytermRateChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="keytermRateTooltip"></div>
+        </div>
+        <div class="legend" id="keytermRateLegend"></div>
+      </div>
+      <div class="chart-card">
+        <h4>期限溢价</h4>
+        <div class="ch-sub">30Y − 10Y 票面利率之差</div>
+        <div class="chart-pos">
+          <svg id="premiumChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="premiumTooltip"></div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h4>样本量（流动性代理指标）</h4>
+      <div class="ch-sub">10Y / 20Y / 30Y 各年发行笔数（*2026仅至7月）</div>
+      <div class="chart-pos">
+        <svg id="keytermCountChart" width="960" height="220" viewBox="0 0 960 220"></svg>
+        <div class="tooltip" id="keytermCountTooltip"></div>
+      </div>
+      <div class="legend" id="keytermCountLegend"></div>
+    </div>
+  </section>
+
+  <section id="sec-category">
+    <div class="sec-head">
+      <div class="sec-eyebrow">券种利差 · 10年期口径，原始利率 vs 国债利差两种口径交叉检验</div>
+      <div class="sec-title">"再融资定价更紧"在票面利率口径下成立，但控制时间因素后并不稳健</div>
+    </div>
+    <p class="finding">
+      同为10年期，<b>再融资债券</b>中位票面利率仅<span class="num">2.31%</span>，比专项新增债券（<span class="num">2.93%</span>）低约<span class="num">62bp</span>，比一般新增债券（<span class="num">2.68%</span>）低约<span class="num">37bp</span>，容易被读成"市场对偿债置换类债券定价持续更友好"。但这一比较存在<b>时间构成混淆</b>：再融资债券的发行时点系统性偏向近年（2023年后占比过半，详见"发行结构时间序列"），而近年恰好是整体利率下行、绝对水平最低的阶段——跨品种比较票面利率，实际上把"品种差异"和"发行年份分布不同"这两件事混在了一起。
+    </p>
+    <p class="finding" style="margin-top:14px;">
+      改用与国债利差（已按发行日剥离掉整体利率水平）重新检验，结论明显不同：<b>全周期合并看，再融资利差中位<span class="num">15.6bp</span>介于一般新增（<span class="num">14.6bp</span>）与专项新增（<span class="num">19.5bp</span>，反而最宽）之间，并非最紧</b>；分年份拆开看更清楚——<b>2023、2024两年再融资利差反而是三类中最宽的</b>（分别为13.7bp、10.5bp），直到2025、2026年才回落到居中位置（详见右侧图表）。分区域交叉检验的结果也不统一：北上广深、东部沿海、东北内蒙三组中再融资利差确实相对最紧，但中原西北与一般新增打平最宽、华北西南居中，谈不上一个能跨区域复现的普遍规律。
+    </p>
+    <p class="finding" style="margin-top:14px;">
+      <b>综合结论需要比初版更谨慎</b>：原始票面利率口径下"再融资定价更紧"的结论，很可能主要是再融资债券发行时点结构性偏后（对应更低的整体利率环境）造成的统计假象，而非稳健的品种定价溢价。控制了时间因素后，再融资债券的相对定价是<b>喜忧参半</b>——多数区域略紧，但在2023–2024年这一特殊再融资发行高峰期反而阶段性最宽，不构成可以简单归纳的"再融资=更紧"的普遍结论。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>原始票面利率（可能受年份分布混淆）</h4>
+        <div class="ch-sub">10Y 中位票面利率，按券种</div>
+        <div class="chart-pos">
+          <svg id="categoryChart" width="480" height="200" viewBox="0 0 480 200"></svg>
+          <div class="tooltip" id="categoryTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>国债利差（控制了年份因素）</h4>
+        <div class="ch-sub">10Y 中位利差(bp)，按券种 x 发行年份</div>
+        <div class="chart-pos">
+          <svg id="categorySpreadYearChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="categorySpreadYearTooltip"></div>
+        </div>
+        <div class="legend" id="categorySpreadYearLegend"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-region">
+    <div class="sec-head">
+      <div class="sec-eyebrow">区域利差 · 10年期，2023–2026</div>
+      <div class="sec-title">东部沿海定价最紧，中原西北最松</div>
+    </div>
+    <p class="finding">
+      按用户提供的Wind区域分组，东部沿海10年期中位利率<span class="num">2.04%</span>为五组最低，中原西北<span class="num">2.18%</span>最高，区域利差约<span class="num">14bp</span>——与地区财政实力/流动性预期大体一致，但幅度并不悬殊。
+    </p>
+    <div class="chart-card">
+      <div class="chart-pos">
+        <svg id="regionChart" width="640" height="220" viewBox="0 0 640 220"></svg>
+        <div class="tooltip" id="regionTooltip"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-treasury-spread">
+    <div class="sec-head">
+      <div class="sec-eyebrow">地方债 vs 国债利差 · 按发行日匹配活跃券中债估值收益率</div>
+      <div class="sec-title">同一区域排序在两套独立口径下复现</div>
+    </div>
+    <p class="finding">
+      将每支地方债的票面利率，与其发行日当天10Y/30Y"活跃券"的中债估值收益率（yield_cnbd，数据源自 <code style="font-family:inherit">wind_10y30y_spread_toolkit</code> 子项目）逐笔匹配（5,485/5,536笔成功匹配，匹配率<span class="num">99.1%</span>），计算发行利差。
+      <b>区域排序与上一节纯票面利率口径完全一致</b>——北上广深最紧（10Y中位<span class="num">11.6bp</span>），东北内蒙最松（10Y中位<span class="num">21.9bp</span>）——两套独立方法互相印证，说明区域分层是稳健的市场特征，而非某一口径的统计噪音。
+      时间维度上更值得关注：利差从2019–2021年的~26bp<b>持续压缩到2024年的~8–10bp</b>，随后在2025年<b>明显走阔回升至15–21bp</b>，10Y、30Y两个期限走势高度一致。2026年至今（<span style="color:var(--bad)">仅至7月</span>）10Y利差略回落至11.0bp，30Y则维持在19.8bp的高位，<b>走阔态势尚未逆转</b>。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>区域利差</h4>
+        <div class="ch-sub">10Y / 30Y 中位利差(bp)，按区域</div>
+        <div class="chart-pos">
+          <svg id="tspreadRegionChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="tspreadRegionTooltip"></div>
+        </div>
+        <div class="legend" id="tspreadRegionLegend"></div>
+      </div>
+      <div class="chart-card">
+        <h4>利差时间序列</h4>
+        <div class="ch-sub">10Y / 30Y 中位利差(bp)，按发行年份（*2026仅至7月）</div>
+        <div class="chart-pos">
+          <svg id="tspreadYearChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="tspreadYearTooltip"></div>
+        </div>
+        <div class="legend" id="tspreadYearLegend"></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h4>区域利差 x 年份（10Y）</h4>
+      <div class="ch-sub">拆到逐年看：北上广深连续4年最紧，"最松"区域每年轮动，2024年全区域同步压缩</div>
+      <div class="chart-pos">
+        <svg id="tspreadRegionYearChart" width="720" height="260" viewBox="0 0 720 260"></svg>
+        <div class="tooltip" id="tspreadRegionYearTooltip"></div>
+      </div>
+      <div class="legend" id="tspreadRegionYearLegend"></div>
+    </div>
+  </section>
+
+  <section id="sec-research-context">
+    <div class="sec-head">
+      <div class="sec-eyebrow">结合市场研究框架的解读</div>
+      <div class="sec-title">利差压缩与"一揽子化债"政策窗口吻合，但截面检验不支持简单机械关系</div>
+    </div>
+    <p class="finding">
+      地方债相对国债长期存在正利差，市场普遍将其归因于<b>流动性溢价</b>——尽管两者同享税收优惠且隐含中央信用支撑，但地方债二级市场换手率远低于国债，投资者需要额外补偿换取流动性折让；本报告样本中利差始终为正（10Y中位<span class="num">17.0bp</span>，30Y中位<span class="num">18.0bp</span>）且从未收敛到零，与这一解释相符。区域分层则通常被归因于<b>地方财政实力与隐性债务认知差异</b>——市场对财政强省（如江浙沪）与债务压力较大地区的城投/隐性债务风险定价不同，本报告"北上广深最紧、东北内蒙最松"的结果与该框架一致，且经coupon直接对比与国债利差两套独立口径互相验证。
+    </p>
+    <p class="finding" style="margin-top:14px;">
+      2023–2024年利差压缩期，时间上与2023年7月中央政治局会议提出"一揽子化债方案"后启动的<b>特殊再融资债券</b>发行高峰高度重合——本报告数据显示再融资债券发行占比同期从37%跳升至52%（详见"发行结构时间序列"）。将其解读为"化债政策提振市场对地方信用的信心，进而压缩利差"是一种自然但需要谨慎验证的假设。
+      <b>为此本报告直接做了检验</b>：按省份计算2023–2025年再融资债券发行占比与平均利差的相关系数，结果仅为<span class="num">0.12</span>（36个省份样本），<b>相关性很弱，不支持"某省当年再融资占比越高、利差压缩越多"的简单机械关系</b>。更合理的解释是：2022–2024年的压缩更可能是全市场共同的风险偏好/政策信心变化（几乎所有区域同步压缩，而非哪个省化债力度大就压缩更多），区域间的利差差异本身则主要由更持久的财政实力差距决定，而非当年再融资发行节奏。2025年利差转而走阔，可能与当年发行供给量显著放大（详见"发行规模趋势"，2025年再融资规模达4.68万亿的历史新高）对二级市场消化能力形成压力有关，但受限于数据维度，本报告不对此单独作因果检验。
+    </p>
+  </section>
+
+  <div class="group-divider"><span class="gd-index">04</span><span class="gd-label">附录</span><span class="gd-line"></span></div>
+
   <section id="sec-outliers">
     <div class="sec-head">
       <div class="sec-eyebrow">异常值逐条核实 · 非提取错误</div>
@@ -628,13 +735,31 @@
     </div>
   </section>
 
+  <section id="sec-appendix-validation">
+    <div class="sec-head">
+      <div class="sec-eyebrow">附录</div>
+      <div class="sec-title">数据校验说明</div>
+    </div>
+  <div class="validation-box" style="margin-bottom:0;">
+    <p style="font-size:13px; color:var(--ink-2); margin:0;">
+      发布上一版分析后进行了一轮专门校验，发现并修正了两处问题：<span class="v-flag">发行规模总量已从初版的 83.0 万亿元下修至 57.6 万亿元（-30.6%）</span>。券种利差、区域利差等中位数类结论基本不受影响（重算前后差异 &lt; 3bp），仅总量/计数类统计需要更正。
+    </p>
+    <div class="validation-grid">
+      <div class="v-item"><span class="v-title">① 表格列错位</span>约110行的"票面利率""发行规模"字段被错误填入了年份等无关数值（如"2020"），源于个别省份PDF表格解析时列边界识别失败。已增加列位去重校验+数值合理区间校验（利率0.1–8%，规模0–1500亿元），异常值置空并标记，不再进入统计口径。</div>
+      <div class="v-item"><span class="v-title">② 跨公告重复</span>约1,792行（占比11.2%）的债券编码在两条不同的"发行结果"公告中重复出现——同一支债券被平台在不同批次公告中重复列示。已改为按债券编码（而非"网址+编码"）去重，每支债券仅保留一条记录。</div>
+      <div class="v-item"><span class="v-title">③ 小数点断行</span>甘肃、陕西两省PDF中数字小数点前后出现异常空格（如"3. 28"而非"3.28"），数值兜底解析在空格处截断，甘肃/陕西分别有31%/18%的利率字段被错误读成整数（如"3.28%"读成"3.00%"）。已在数值解析前统一去除内部空白再解析，两省异常占比降至&lt;1%。</div>
+      <div class="v-item"><span class="v-title">④ 校验后确认</span>去重后 0 条重复；票面利率区间收窄至 1.16–4.28%（此前含①③类异常值时均值失真、甚至出现"财政弱省利率低于国债"的反常读数）；债券编码 14,430 条中仅37条为离岸债ISIN格式代码（HK/MO开头，属正常值）。</div>
+    </div>
+  </div>
+  </section>
+
   <footer>
     <h3>方法与局限</h3>
     <ul>
       <li>数据抓取自celma.org.cn"发行结果"栏目（2020年起标准化表格含债券编码/简称；2020年边界前后仍有少量记录使用无编码的旧版公告格式，已标记未纳入利率统计）。</li>
-      <li>本版已完成数据校验：修正表格列错位导致的利率/规模异常值，修正跨公告重复计入债券的问题（详见上方校验说明）。</li>
+      <li>本版已完成数据校验：修正表格列错位导致的利率/规模异常值，修正跨公告重复计入债券的问题（详见附录"数据校验说明"）。</li>
       <li>区域分组沿用用户提供的Wind终端自定义五组分类（市场惯例分组，非严格地理邻近）。</li>
-      <li>2026年数据仅覆盖至7月，年度趋势类图表（发行结构、发行规模）已排除2026年以避免不完整年份误导对比；收益率曲线截面图表因2026年样本已足够充分故予以保留。</li>
+      <li>2026年数据仅覆盖至7月（约7/12全年），所有年度趋势类图表已将2026年一并纳入并以"*"标注为不完整年份，但<b>未做全年化折算</b>——与往年整年数值直接对比时（尤其是发行规模等流量指标）需注意2026年数字天然偏小，年中同比、增速类判断建议以2025年及以前的完整年份为准。</li>
       <li>期限溢价、关键期限时间序列均按年度中位数计算，样本量较小的期限×年份组合（如2019年前的20/30年期）估计误差相对更大，已在图表中同步展示样本量供参考。</li>
       <li>地方债vs国债利差：国债10Y/30Y活跃券及其中债估值收益率(yield_cnbd)数据来自 <code style="font-family:inherit">mof_bond_announcements/wind_10y30y_spread_toolkit</code> 子项目（Wind日度数据，2026-07-30刷新导出，覆盖2016-08起）；活跃券判定采用"同组内按首发日排序，区间=[自身首发日,下一新首发券首发日前一天]"的市场惯例简化规则，非Wind官方活跃券字段。地方债发行日缺少当日收益率时，设计为向前回溯最多5个交易日取值，但实际5,485笔匹配全部为发行当日精确匹配（0笔回溯），说明国债日度收益率数据与地方债发行日历重合度很高。</li>
     </ul>
@@ -708,11 +833,11 @@
   // ---------------- Key term rate time series (line, 3 series) ----------------
   function drawKeytermRate() {
     const data = {
-      "10Y": {"2019":[3.42,210],"2020":[3.22,507],"2021":[3.19,479],"2022":[2.92,459],"2023":[2.90,485],"2024":[2.26,527],"2025":[1.89,633]},
-      "20Y": {"2019":[3.81,41],"2020":[3.69,265],"2021":[3.54,297],"2022":[3.28,322],"2023":[3.07,290],"2024":[2.41,264],"2025":[2.20,350]},
-      "30Y": {"2019":[4.09,65],"2020":[3.92,251],"2021":[3.67,172],"2022":[3.41,219],"2023":[3.16,250],"2024":[2.42,280],"2025":[2.25,415]}
+      "10Y": {"2019":[3.42,210],"2020":[3.22,507],"2021":[3.19,479],"2022":[2.92,459],"2023":[2.90,485],"2024":[2.26,527],"2025":[1.89,633],"2026*":[1.88,363]},
+      "20Y": {"2019":[3.81,41],"2020":[3.69,265],"2021":[3.54,297],"2022":[3.28,322],"2023":[3.07,290],"2024":[2.41,264],"2025":[2.20,350],"2026*":[2.41,190]},
+      "30Y": {"2019":[4.09,65],"2020":[3.92,251],"2021":[3.67,172],"2022":[3.41,219],"2023":[3.16,250],"2024":[2.42,280],"2025":[2.25,415],"2026*":[2.45,220]}
     };
-    const years = ["2019","2020","2021","2022","2023","2024","2025"];
+    const years = ["2019","2020","2021","2022","2023","2024","2025","2026*"];
     const terms = ["10Y","20Y","30Y"];
     const colors = themeColors();
     const seriesColor = { "10Y": colors.s1, "20Y": colors.s2, "30Y": colors.s3 };
@@ -754,7 +879,7 @@
 
   // ---------------- Term premium (single line) ----------------
   function drawPremium() {
-    const data = {"2019":0.67,"2020":0.70,"2021":0.48,"2022":0.49,"2023":0.26,"2024":0.16,"2025":0.36};
+    const data = {"2019":0.67,"2020":0.70,"2021":0.48,"2022":0.49,"2023":0.26,"2024":0.16,"2025":0.36,"2026*":0.57};
     const years = Object.keys(data);
     const colors = themeColors();
     const svg = document.getElementById('premiumChart');
@@ -792,11 +917,11 @@
   // ---------------- Key term sample count (grouped bars) ----------------
   function drawKeytermCount() {
     const data = {
-      "10Y": {"2019":210,"2020":507,"2021":479,"2022":459,"2023":485,"2024":527,"2025":633},
-      "20Y": {"2019":41,"2020":265,"2021":297,"2022":322,"2023":290,"2024":264,"2025":350},
-      "30Y": {"2019":65,"2020":251,"2021":172,"2022":219,"2023":250,"2024":280,"2025":415}
+      "10Y": {"2019":210,"2020":507,"2021":479,"2022":459,"2023":485,"2024":527,"2025":633,"2026*":363},
+      "20Y": {"2019":41,"2020":265,"2021":297,"2022":322,"2023":290,"2024":264,"2025":350,"2026*":190},
+      "30Y": {"2019":65,"2020":251,"2021":172,"2022":219,"2023":250,"2024":280,"2025":415,"2026*":220}
     };
-    const years = ["2019","2020","2021","2022","2023","2024","2025"];
+    const years = ["2019","2020","2021","2022","2023","2024","2025","2026*"];
     const terms = ["10Y","20Y","30Y"];
     const colors = themeColors();
     const seriesColor = { "10Y": colors.s1, "20Y": colors.s2, "30Y": colors.s3 };
@@ -841,14 +966,15 @@
   function drawMix() {
     const data = {
       "2019":[14.7,48.8,36.5],"2020":[14.7,55.1,30.3],"2021":[10.3,46.9,42.8],
-      "2022":[9.7,53.4,36.9],"2023":[8.1,40.1,51.8],"2024":[7.4,41.2,51.4],"2025":[7.9,43.7,48.4]
+      "2022":[9.7,53.4,36.9],"2023":[8.1,40.1,51.8],"2024":[7.4,41.2,51.4],"2025":[7.9,43.7,48.4],
+      "2026*":[6.6,36.5,56.9]
     };
     const cats = ["一般新增债券","专项新增债券","再融资债券"];
     const colors = themeColors();
     const seriesColor = [colors.s1, colors.s2, colors.s3];
     const years = Object.keys(data);
     const svg = document.getElementById('mixChart');
-    const W = 680, H = 280, padL = 44, padR = 20, padT = 16, padB = 34;
+    const W = 720, H = 280, padL = 44, padR = 20, padT = 16, padB = 34;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const barW = plotW / years.length * 0.6;
     const step = plotW / years.length;
@@ -882,7 +1008,8 @@
       bar.addEventListener('mouseleave', () => hideTip(tip));
     });
     document.getElementById('mixLegend').innerHTML = cats.map((cName,i) =>
-      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cName}</span>`).join('');
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cName}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
   // ---------------- Category bar chart ----------------
@@ -894,7 +1021,7 @@
     ];
     const colors = themeColors();
     const svg = document.getElementById('categoryChart');
-    const W = 640, padL = 130, padR = 60, padT = 10, padB = 10;
+    const W = 480, padL = 100, padR = 50, padT = 10, padB = 10;
     const plotW = W - padL - padR;
     const barH = 34, gap = 20;
     const vMax = 3.4;
@@ -921,6 +1048,55 @@
       });
       bar.addEventListener('mouseleave', () => hideTip(tip));
     });
+  }
+
+  // ---------------- Category spread by year (grouped bars, treasury-spread bp) ----------------
+  function drawCategorySpreadYear() {
+    const data = {
+      "一般新增": {"2023":11.5,"2024":8.8,"2025":11.7,"2026":10.7},
+      "专项新增": {"2023":11.2,"2024":8.0,"2025":19.0,"2026":16.4},
+      "再融资":   {"2023":13.7,"2024":10.5,"2025":17.1,"2026":15.4}
+    };
+    const cats = Object.keys(data);
+    const years = ["2023","2024","2025","2026"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s2, colors.s3];
+    const svg = document.getElementById('categorySpreadYearChart');
+    const W = 480, H = 260, padL = 34, padR = 14, padT = 16, padB = 34;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxV = 20;
+    const groupW = plotW / years.length;
+    const barW = groupW / (cats.length + 1.2);
+    let html = '';
+    [0,5,10,15,20].forEach(gv => {
+      const yy = padT + plotH - (gv/maxV)*plotH;
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-6}" y="${yy+4}" text-anchor="end">${gv}</text>`;
+    });
+    years.forEach((yr, gi) => {
+      cats.forEach((cat, ci) => {
+        const v = data[cat][yr];
+        const h = (v/maxV)*plotH;
+        const bx = padL + gi*groupW + (ci+0.3)*barW;
+        const by = padT + plotH - h;
+        html += `<rect class="bar" data-cat="${cat}" data-year="${yr}" data-v="${v}" x="${bx}" y="${by}" width="${barW*0.85}" height="${h}" fill="${seriesColor[ci]}" rx="2" />`;
+      });
+      html += `<text class="axis-label num" x="${padL + gi*groupW + groupW/2}" y="${H-12}" text-anchor="middle">${yr}${yr==='2026'?'*':''}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('categorySpreadYearTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.year}年 · ${bar.dataset.cat}</span><b class="num">${bar.dataset.v}bp</b>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('categorySpreadYearLegend').innerHTML = cats.map((cat,i) =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cat}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
   // ---------------- Region bar chart ----------------
@@ -969,14 +1145,14 @@
       "2019": [3884, 12899, 9635], "2020": [8916, 33507, 18422],
       "2021": [7271, 33077, 30145], "2022": [6679, 36828, 25419],
       "2023": [6926, 34223, 44261], "2024": [6637, 37111, 46342],
-      "2025": [7629, 42284, 46777]
+      "2025": [7629, 42284, 46777], "2026*": [4137, 22795, 35566]
     };
     const cats = ["一般新增债券","专项新增债券","再融资债券"];
     const colors = themeColors();
     const seriesColor = [colors.s1, colors.s2, colors.s3];
     const years = Object.keys(data);
     const svg = document.getElementById('volumeChart');
-    const W = 680, H = 300, padL = 56, padR = 20, padT = 16, padB = 40;
+    const W = 720, H = 300, padL = 56, padR = 20, padT = 16, padB = 40;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const maxTotal = Math.max(...years.map(y => data[y].reduce((a,b)=>a+b,0)));
     const barW = plotW / years.length * 0.62;
@@ -1013,7 +1189,8 @@
       bar.addEventListener('mouseleave', () => hideTip(tip));
     });
     document.getElementById('volumeLegend').innerHTML = cats.map((cName, i) =>
-      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cName}</span>`).join('');
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cName}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
   // ---------------- Treasury spread by region (grouped bars) ----------------
@@ -1069,8 +1246,8 @@
 
   // ---------------- Treasury spread time series (2 lines) ----------------
   function drawTspreadYear() {
-    const data10 = {"2019":26.0,"2020":26.0,"2021":25.8,"2022":15.2,"2023":12.0,"2024":8.0,"2025":14.5};
-    const data30 = {"2019":25.4,"2020":26.0,"2021":23.2,"2022":14.5,"2023":10.6,"2024":9.7,"2025":20.9};
+    const data10 = {"2019":26.0,"2020":26.0,"2021":25.8,"2022":15.2,"2023":12.0,"2024":8.0,"2025":14.5,"2026*":11.0};
+    const data30 = {"2019":25.4,"2020":26.0,"2021":23.2,"2022":14.5,"2023":10.6,"2024":9.7,"2025":20.9,"2026*":19.8};
     const years = Object.keys(data10);
     const colors = themeColors();
     const seriesColor = { "10Y": colors.s1, "30Y": colors.s3 };
@@ -1107,7 +1284,8 @@
       pt.addEventListener('mouseleave', () => hideTip(tip));
     });
     document.getElementById('tspreadYearLegend').innerHTML = ['10Y','30Y'].map(t =>
-      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[t]}"></span>${t}</span>`).join('');
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[t]}"></span>${t}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
   // ---------------- Workday-gap histogram ----------------
@@ -1368,7 +1546,7 @@
     const data = {
       "2019":[5951,751,1131,3599], "2020":[18920,9324,6766,11327], "2021":[20473,8922,7476,6289],
       "2022":[16044,10203,10162,7967], "2023":[20374,8340,9477,10159], "2024":[26287,9709,12372,16251],
-      "2025":[26544,9791,15033,20579]
+      "2025":[26544,9791,15033,20579], "2026*":[18049,6626,9386,14067]
     };
     const terms = ["10Y","15Y","20Y","30Y"];
     const colors = themeColors();
@@ -1578,7 +1756,7 @@
 
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
-    drawMix(); drawCategory(); drawRegion(); drawVolume();
+    drawMix(); drawCategory(); drawCategorySpreadYear(); drawRegion(); drawVolume();
     drawTspreadRegion(); drawTspreadYear(); drawTspreadRegionYear();
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
     drawRecentTerm(); drawRecentRegion();
