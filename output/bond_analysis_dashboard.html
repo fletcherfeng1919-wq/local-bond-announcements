@@ -349,6 +349,36 @@
     </div>
   </section>
 
+  <section id="sec-term-volume">
+    <div class="sec-head">
+      <div class="sec-eyebrow">分期限发行规模 · 按期限 x 年份</div>
+      <div class="sec-title">10年期发行量最大，但20/30年期增速远超其他期限</div>
+    </div>
+    <p class="finding">
+      按累计发行规模看，<b>10年期以15.7万亿元居首</b>（占全部规模的27%），其次是30年期（9.4万亿）、7年期（9.3万亿）；1年、2年期规模很小（合计不到0.3万亿），说明地方债本身就不是短久期品种。
+      更值得关注的是<b>期限结构在拉长</b>：30年期规模从2019年的3,599亿元增长到2025年的20,579亿元，<b>增长约5.7倍</b>；20年期从1,131亿元增长到15,033亿元，<b>增长约13.3倍</b>，增速远超10年期（约4.5倍）及其他中短期限——与"优化债务期限结构、减少滚动续发压力"的政策导向一致。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>累计发行规模</h4>
+        <div class="ch-sub">全周期，按期限（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="termVolumeChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="termVolumeTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>期限结构演变</h4>
+        <div class="ch-sub">10Y / 15Y / 20Y / 30Y 发行规模，按年度（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="termVolumeYearChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="termVolumeYearTooltip"></div>
+        </div>
+        <div class="legend" id="termVolumeYearLegend"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="sec-mix">
     <div class="sec-head">
       <div class="sec-eyebrow">发行结构时间序列 · 按年份</div>
@@ -1249,11 +1279,101 @@
     ).join('');
   }
 
+  // ---------------- Total volume by term (bars) ----------------
+  function drawTermVolume() {
+    const data = {"1Y":[1171,56],"2Y":[1744,95],"3Y":[22475,584],"5Y":[67965,1706],"7Y":[92518,2125],
+      "10Y":[157379,3773],"15Y":[65236,2091],"20Y":[73737,2078],"30Y":[93713,1919]};
+    const terms = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('termVolumeChart');
+    const W = 480, padL = 100, padR = 50, padT = 10, padB = 10;
+    const plotW = W - padL - padR;
+    const barH = 22, gap = 8;
+    const vMax = 160000;
+    const xScale = v => (v/vMax)*plotW;
+    let html = '';
+    terms.forEach((t,i) => {
+      const [yi, n] = data[t];
+      const yy = padT + i*(barH+gap);
+      const w = xScale(yi);
+      html += `<text class="bar-label" x="${padL-10}" y="${yy+barH/2+4}" text-anchor="end">${t}</text>`;
+      html += `<rect class="bar" data-term="${t}" data-yi="${yi}" data-n="${n}" x="${padL}" y="${yy}" width="${w}" height="${barH}" rx="3" fill="${colors.s1}" />`;
+      html += `<text class="bar-value" x="${padL+w+8}" y="${yy+barH/2+4}">${(yi/10000).toFixed(1)}万亿</text>`;
+    });
+    const totalH = padT + terms.length*(barH+gap) - gap + padB;
+    svg.setAttribute('height', totalH);
+    svg.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
+    svg.innerHTML = html;
+    const tip = document.getElementById('termVolumeTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.term}</span><b class="num">${(bar.dataset.yi/10000).toFixed(2)}万亿元</b> <span class="t-label">· ${bar.dataset.n}笔</span>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Term structure evolution (stacked bars, 4 long terms) ----------------
+  function drawTermVolumeYear() {
+    const data = {
+      "2019":[5951,751,1131,3599], "2020":[18920,9324,6766,11327], "2021":[20473,8922,7476,6289],
+      "2022":[16044,10203,10162,7967], "2023":[20374,8340,9477,10159], "2024":[26287,9709,12372,16251],
+      "2025":[26544,9791,15033,20579]
+    };
+    const terms = ["10Y","15Y","20Y","30Y"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s2, colors.s3, colors.gold];
+    const years = Object.keys(data);
+    const svg = document.getElementById('termVolumeYearChart');
+    const W = 480, H = 280, padL = 44, padR = 16, padT = 14, padB = 32;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxTotal = Math.max(...years.map(y => data[y].reduce((a,b)=>a+b,0)));
+    const barW = plotW / years.length * 0.6;
+    const step = plotW / years.length;
+    const yScale = v => (v/maxTotal)*plotH;
+    let html = '';
+    [0,20000,40000,60000].forEach(gv => {
+      const yy = padT + plotH - yScale(gv);
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${yy+4}" text-anchor="end">${(gv/10000).toFixed(1)}</text>`;
+    });
+    years.forEach((yr,i) => {
+      const vals = data[yr];
+      const cx = padL + i*step + step/2 - barW/2;
+      let cum = 0;
+      vals.forEach((v, ci) => {
+        const h = yScale(v);
+        const yy = padT + plotH - yScale(cum) - h;
+        html += `<rect class="bar" data-year="${yr}" data-term="${terms[ci]}" data-value="${v}" x="${cx}" y="${yy}" width="${barW}" height="${h}" fill="${seriesColor[ci]}" />`;
+        cum += v;
+      });
+      html += `<text class="axis-label num" x="${cx+barW/2}" y="${H-14}" text-anchor="middle">${yr.slice(2)}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('termVolumeYearTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const v = (Number(bar.dataset.value)/10000).toFixed(2);
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.year}年 · ${bar.dataset.term}</span><b class="num">${v}万亿元</b>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('termVolumeYearLegend').innerHTML = terms.map((t,i) =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${t}</span>`).join('');
+  }
+
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
     drawMix(); drawCategory(); drawRegion(); drawVolume();
     drawTspreadRegion(); drawTspreadYear();
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
+    drawTermVolume(); drawTermVolumeYear();
     fillOutlierTable();
   }
   drawAll();
