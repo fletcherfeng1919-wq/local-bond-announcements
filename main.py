@@ -9,6 +9,7 @@ Usage:
 """
 import argparse
 
+from src.build_dashboard_plan import refresh_plan_section
 from src.build_outputs import (
     build_boxplot, build_raw_data_xlsx, build_summary_stat_xlsx, build_bond_dictionary_xlsx,
     _prep_announcements, _prep_plans, _prep_results,
@@ -45,6 +46,8 @@ def main():
     report_path = config.OUTPUT_DIR / "local_report.md"
     report_path.write_text(report_text, encoding="utf-8")
 
+    plan_status = refresh_plan_section(plan_df)
+
     print(
         f"完成。输出文件：\n"
         f"  {raw_path}\n"
@@ -52,6 +55,8 @@ def main():
         f"  {report_path}\n"
         f"  {boxplot_path}"
         + (f"\n  {dict_path}" if dict_path else "")
+        + (f"\n  已刷新 bond_analysis_dashboard.html 中的最近发行计划栏目（{plan_status}）"
+           if plan_status else "\n  未刷新 bond_analysis_dashboard.html 发行计划栏目（无dashboard文件或无可用计划数据）")
     )
 
 

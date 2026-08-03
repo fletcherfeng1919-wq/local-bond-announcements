@@ -137,22 +137,61 @@
   .v-item { font-size: 13px; color: var(--ink-2); }
   .v-item .v-title { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; }
 
-  /* table of contents */
-  .toc {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 20px 24px; margin-bottom: 40px;
+  /* left sliding table of contents */
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  .toc-toggle {
+    position: fixed; top: 22px; left: 22px; z-index: 60;
+    display: flex; align-items: center; gap: 9px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 14px 9px 12px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   }
-  .toc-title {
-    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold);
-    font-weight: 600; margin-bottom: 14px;
+  .toc-toggle:hover { color: var(--gold); border-color: rgba(212,167,44,0.4); }
+  .toc-toggle .bars { width: 15px; height: 11px; position: relative; flex: none; }
+  .toc-toggle .bars span { position: absolute; left: 0; right: 0; height: 1.6px; background: currentColor; border-radius: 1px; }
+  .toc-toggle .bars span:nth-child(1) { top: 0; }
+  .toc-toggle .bars span:nth-child(2) { top: 4.5px; }
+  .toc-toggle .bars span:nth-child(3) { top: 9px; }
+
+  .toc-backdrop {
+    position: fixed; inset: 0; background: rgba(4,6,10,0.55); z-index: 55;
+    opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
   }
-  .toc-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-  .toc-group-label { font-size: 11.5px; color: var(--ink-muted); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.02em; }
-  .toc-group ul { list-style: none; margin: 0; padding: 0; }
-  .toc-group li { margin-bottom: 7px; }
-  .toc-group a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
-  .toc-group a:hover { color: var(--gold); }
-  @media (max-width: 640px) { .toc-groups { grid-template-columns: 1fr; } }
+  .toc-backdrop.show { opacity: 1; pointer-events: auto; }
+
+  .side-toc {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 268px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 80px 22px 28px; overflow-y: auto; z-index: 58;
+    transform: translateX(-100%); transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+    box-shadow: 12px 0 28px rgba(0,0,0,0.16);
+  }
+  .side-toc.open { transform: translateX(0); }
+  .side-toc .toc-close {
+    position: absolute; top: 22px; right: 18px; background: none; border: none;
+    color: var(--ink-muted); font-size: 18px; cursor: pointer; line-height: 1; padding: 4px;
+  }
+  .side-toc .toc-close:hover { color: var(--gold); }
+  .side-toc-heading { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 600; margin-bottom: 18px; }
+  .side-toc-group { margin-bottom: 20px; }
+  .side-toc-group-label { font-size: 10.5px; color: var(--ink-muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; padding-left: 9px; }
+  .side-toc ul { list-style: none; margin: 0; padding: 0; }
+  .side-toc li { margin-bottom: 1px; }
+  .side-toc a {
+    display: block; padding: 6.5px 9px; border-radius: 6px; margin-right: 4px;
+    color: var(--ink-2); text-decoration: none; font-size: 13px; line-height: 1.4;
+    border-left: 2px solid transparent; transition: color 0.12s, background 0.12s, border-color 0.12s;
+  }
+  .side-toc a:hover { color: var(--ink); background: var(--gold-dim); }
+  .side-toc a.active { color: var(--gold); border-left-color: var(--gold); font-weight: 600; background: var(--gold-dim); }
+
+  @media (min-width: 1440px) {
+    .toc-toggle, .toc-backdrop, .side-toc .toc-close { display: none; }
+    .side-toc { transform: translateX(0); box-shadow: none; padding-top: 44px; }
+    .wrap { margin: 0 auto 0 max(300px, calc(50% - 540px)); }
+  }
 
   /* section group divider */
   .group-divider { display: flex; align-items: baseline; gap: 14px; margin: 8px 0 28px; }
@@ -160,7 +199,7 @@
   .group-divider .gd-label { font-size: 17px; font-weight: 600; color: var(--ink); font-family: Georgia, "Songti SC", "STSong", serif; white-space: nowrap; }
   .group-divider .gd-line { flex: 1; height: 1px; background: var(--border); }
 
-  section { margin-bottom: 56px; }
+  section { margin-bottom: 56px; scroll-margin-top: 24px; }
   .sec-head { margin-bottom: 18px; }
   .sec-eyebrow { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.06em; margin-bottom: 6px; }
   .sec-title { font-size: 20px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
@@ -262,51 +301,55 @@
     </div>
   </div>
 
-  <nav class="toc">
-    <div class="toc-title">目录</div>
-    <div class="toc-groups">
-      <div class="toc-group">
-        <div class="toc-group-label">背景知识</div>
-        <ul>
-          <li><a href="#sec-primer">地方债是什么、分几类、钱花在哪</a></li>
-        </ul>
-      </div>
-      <div class="toc-group">
-        <div class="toc-group-label">① 发行 / 公告状态</div>
-        <ul>
-          <li><a href="#sec-lead-time">发行前公告规律</a></li>
-          <li><a href="#sec-timing-pattern">招标日时点规律</a></li>
-        </ul>
-      </div>
-      <div class="toc-group">
-        <div class="toc-group-label">② 发行量</div>
-        <ul>
-          <li><a href="#sec-term-volume">分期限发行规模</a></li>
-          <li><a href="#sec-recent-volume">2022年以来发行规模</a></li>
-          <li><a href="#sec-mix">发行结构时间序列</a></li>
-          <li><a href="#sec-volume">发行规模趋势</a></li>
-        </ul>
-      </div>
-      <div class="toc-group">
-        <div class="toc-group-label">③ 利差</div>
-        <ul>
-          <li><a href="#sec-curve">收益率曲线演变</a></li>
-          <li><a href="#sec-keyterm">关键期限时间序列</a></li>
-          <li><a href="#sec-category">券种利差</a></li>
-          <li><a href="#sec-region">区域利差</a></li>
-          <li><a href="#sec-treasury-spread">地方债 vs 国债利差</a></li>
-          <li><a href="#sec-research-context">结合市场研究框架的解读</a></li>
-        </ul>
-      </div>
-      <div class="toc-group">
-        <div class="toc-group-label">附录</div>
-        <ul>
-          <li><a href="#sec-outliers">异常值逐条核实</a></li>
-          <li><a href="#sec-appendix-validation">数据校验说明</a></li>
-        </ul>
-      </div>
+  <button class="toc-toggle" id="tocToggle" aria-label="打开目录" aria-expanded="false">
+    <span class="bars"><span></span><span></span><span></span></span>目录
+  </button>
+  <div class="toc-backdrop" id="tocBackdrop"></div>
+  <aside class="side-toc" id="sideToc" aria-label="目录">
+    <button class="toc-close" id="tocClose" aria-label="关闭目录">✕</button>
+    <div class="side-toc-heading">目录</div>
+    <div class="side-toc-group">
+      <div class="side-toc-group-label">背景知识</div>
+      <ul>
+        <li><a href="#sec-primer">地方债是什么、分几类、钱花在哪</a></li>
+      </ul>
     </div>
-  </nav>
+    <div class="side-toc-group">
+      <div class="side-toc-group-label">① 发行 / 公告状态</div>
+      <ul>
+        <li><a href="#sec-lead-time">发行前公告规律</a></li>
+        <li><a href="#sec-timing-pattern">招标日时点规律</a></li>
+        <li><a href="#sec-plan">最近一个月发行计划</a></li>
+      </ul>
+    </div>
+    <div class="side-toc-group">
+      <div class="side-toc-group-label">② 发行量</div>
+      <ul>
+        <li><a href="#sec-term-volume">分期限发行规模</a></li>
+        <li><a href="#sec-recent-volume">2022年以来发行规模</a></li>
+        <li><a href="#sec-mix">发行结构时间序列</a></li>
+        <li><a href="#sec-volume">发行规模趋势</a></li>
+      </ul>
+    </div>
+    <div class="side-toc-group">
+      <div class="side-toc-group-label">③ 利差</div>
+      <ul>
+        <li><a href="#sec-curve">收益率曲线演变</a></li>
+        <li><a href="#sec-keyterm">关键期限时间序列</a></li>
+        <li><a href="#sec-category">券种利差</a></li>
+        <li><a href="#sec-region">区域利差</a></li>
+        <li><a href="#sec-treasury-spread">地方债 vs 国债利差</a></li>
+        <li><a href="#sec-research-context">结合市场研究框架的解读</a></li>
+      </ul>
+    </div>
+    <div class="side-toc-group">
+      <div class="side-toc-group-label">附录</div>
+      <ul>
+        <li><a href="#sec-outliers">异常值逐条核实</a></li>
+        <li><a href="#sec-appendix-validation">数据校验说明</a></li>
+      </ul>
+    </div>
+  </aside>
 
   <section id="sec-primer">
     <div class="sec-head">
@@ -437,6 +480,23 @@
           <div class="tooltip" id="monthTooltip"></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="sec-plan">
+    <div class="sec-head">
+      <div class="sec-eyebrow">最近一个月发行计划 · 基于"发行安排"公告，前瞻指标，数据随抓取自动刷新</div>
+      <div class="sec-title" id="planTitle">下月发行计划：加载中…</div>
+    </div>
+    <p class="finding" id="planFinding">加载中…</p>
+    <div class="chart-card">
+      <h4>各省计划发行规模</h4>
+      <div class="ch-sub" id="planChSub">按一般 / 专项 / 再融资拆分（亿元），按总规模降序</div>
+      <div class="chart-pos">
+        <svg id="planChart" width="680" height="300" viewBox="0 0 680 300"></svg>
+        <div class="tooltip" id="planTooltip"></div>
+      </div>
+      <div class="legend" id="planLegend"></div>
     </div>
   </section>
 
@@ -1288,6 +1348,93 @@
       `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
+  // ---------------- Latest monthly issuance plan (refreshable section) ----------------
+  function drawPlan() {
+    // PLAN_DATA_START -- auto-generated by src/build_dashboard_plan.py each time `python main.py` runs; do not hand-edit the lines between these markers
+    const planMeta = { period: "2026年8月", asOf: "2026-07-22", covered: 25, total: 37, totalYi: 7508.5 };
+    const planData = [
+      { province: "四川省", general: 173.00, special: 1265.00, refi: 66.00 },
+      { province: "山东省", general: 0.00, special: 425.00, refi: 752.00 },
+      { province: "北京市", general: 73.66, special: 214.20, refi: 230.47 },
+      { province: "湖北省", general: 0.00, special: 400.00, refi: 109.60 },
+      { province: "江苏省", general: 0.00, special: 297.90, refi: 165.66 },
+      { province: "浙江省", general: 0.00, special: 200.00, refi: 220.00 },
+      { province: "广西壮族自治区", general: 112.05, special: 0.00, refi: 244.42 },
+      { province: "福建省", general: 46.65, special: 101.00, refi: 200.07 },
+      { province: "重庆市", general: 20.00, special: 165.00, refi: 162.64 },
+      { province: "河北省", general: 109.02, special: 152.77, refi: 73.25 },
+      { province: "陕西省", general: 50.00, special: 141.50, refi: 112.23 },
+      { province: "海南省", general: 21.15, special: 100.00, refi: 107.41 },
+      { province: "贵州省", general: 0.00, special: 0.00, refi: 177.27 },
+      { province: "黑龙江省", general: 148.64, special: 0.00, refi: 10.62 },
+      { province: "厦门市", general: 8.00, special: 141.00, refi: 0.00 },
+      { province: "安徽省", general: 0.00, special: 0.00, refi: 138.12 },
+      { province: "宁夏回族自治区", general: 35.00, special: 20.00, refi: 68.84 },
+      { province: "甘肃省", general: 100.00, special: 1.00, refi: 1.00 },
+      { province: "宁波市", general: 0.00, special: 20.00, refi: 60.50 },
+      { province: "新疆维吾尔自治区", general: 16.00, special: 23.00, refi: 0.00 },
+      { province: "青海省", general: 25.88, special: 1.00, refi: 1.00 },
+      { province: "江西省", general: 0.00, special: 0.00, refi: 0.00 },
+      { province: "深圳市", general: 0.00, special: 0.00, refi: 0.00 },
+      { province: "湖南省", general: 0.00, special: 0.00, refi: 0.00 },
+      { province: "内蒙古自治区", general: 0.00, special: 0.00, refi: 0.00 },
+    ];
+    // PLAN_DATA_END
+
+    document.getElementById('planTitle').textContent =
+      `${planMeta.period}计划发行规模合计约${(planMeta.totalYi/10000).toFixed(2)}万亿元（已公告${planMeta.covered}/${planMeta.total}省份）`;
+    document.getElementById('planFinding').innerHTML =
+      `本节数据来自"发行安排"公告栏目，是<b>尚未招标、可能调整的计划数字</b>，与本报告其余部分基于"发行结果"的已确认口径不是同一类数据，不可直接比较——实际招标时批次常有追加、推迟或取消。` +
+      `截至 <span class="num">${planMeta.asOf}</span>，已有 <span class="num">${planMeta.covered}</span>/${planMeta.total} 个省份/计划单列市公布了${planMeta.period}的发行安排，合计计划规模约 <span class="num">${(planMeta.totalYi/10000).toFixed(2)}万亿元</span>；随着更多省份陆续发布，以及每次重新抓取数据后，本节会<b>自动刷新为最新一个覆盖面较广的月份</b>，当前数字仅反映抓取时点已公布的部分。`;
+    document.getElementById('planChSub').textContent =
+      `${planMeta.period} · 按一般 / 专项 / 再融资拆分（亿元），按计划总规模降序，已公告 ${planMeta.covered} 个省份`;
+
+    const cats = ["一般债券", "专项债券", "再融资债券"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s2, colors.s3];
+    const svg = document.getElementById('planChart');
+    const W = 680, padL = 92, padR = 60, padT = 10, padB = 10;
+    const plotW = W - padL - padR;
+    const barH = 18, gap = 8;
+    const maxTotal = Math.max(...planData.map(d => d.general + d.special + d.refi));
+    const xScale = v => (v / maxTotal) * plotW;
+    const keyLabel = { general: "一般债券", special: "专项债券", refi: "再融资债券" };
+    let html = '';
+    planData.forEach((d, i) => {
+      const yy = padT + i * (barH + gap);
+      const total = d.general + d.special + d.refi;
+      let cum = 0;
+      [["general", colors.s1], ["special", colors.s2], ["refi", colors.s3]].forEach(([key, color]) => {
+        const v = d[key];
+        const w = xScale(v);
+        const x0 = padL + xScale(cum);
+        if (v > 0) {
+          html += `<rect class="bar" data-province="${d.province}" data-key="${key}" data-v="${v.toFixed(2)}" x="${x0}" y="${yy}" width="${w}" height="${barH}" fill="${color}" />`;
+        }
+        cum += v;
+      });
+      html += `<text class="bar-label" x="${padL - 10}" y="${yy + barH/2 + 4}" text-anchor="end" style="font-size:11.5px">${d.province}</text>`;
+      html += `<text class="bar-value" x="${padL + xScale(total) + 8}" y="${yy + barH/2 + 4}" style="font-size:11.5px">${total.toFixed(0)}亿</text>`;
+    });
+    const totalH = padT + planData.length * (barH + gap) - gap + padB;
+    svg.setAttribute('height', totalH);
+    svg.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
+    svg.innerHTML = html;
+    const tip = document.getElementById('planTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.province} · ${keyLabel[bar.dataset.key]}</span><b class="num">${bar.dataset.v}</b> 亿元`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('planLegend').innerHTML = cats.map((cName, i) =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cName}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">数据截至 ${planMeta.asOf}，随下次抓取自动更新</span>`;
+  }
+
   // ---------------- Workday-gap histogram ----------------
   function drawHist() {
     const data = {"0":31,"1":21,"2":56,"3":58,"4":172,"5":2730,"6-10":89,"11-20":2,"21+":16};
@@ -1761,10 +1908,40 @@
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
     drawRecentTerm(); drawRecentRegion();
     drawTermVolume(); drawTermVolumeYear();
+    drawPlan();
     fillOutlierTable();
   }
   drawAll();
   const observer = new MutationObserver(drawAll);
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---------------- Left sliding TOC: toggle + scrollspy ----------------
+  (function initSideToc() {
+    const toggle = document.getElementById('tocToggle');
+    const closeBtn = document.getElementById('tocClose');
+    const backdrop = document.getElementById('tocBackdrop');
+    const sideToc = document.getElementById('sideToc');
+    function openToc() { sideToc.classList.add('open'); backdrop.classList.add('show'); toggle.setAttribute('aria-expanded', 'true'); }
+    function closeToc() { sideToc.classList.remove('open'); backdrop.classList.remove('show'); toggle.setAttribute('aria-expanded', 'false'); }
+    toggle.addEventListener('click', openToc);
+    closeBtn.addEventListener('click', closeToc);
+    backdrop.addEventListener('click', closeToc);
+    const tocLinks = Array.from(sideToc.querySelectorAll('a'));
+    tocLinks.forEach(a => a.addEventListener('click', () => { if (window.innerWidth < 1440) closeToc(); }));
+
+    const sections = tocLinks
+      .map(a => document.querySelector(a.getAttribute('href')))
+      .filter(Boolean);
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const link = tocLinks.find(a => a.getAttribute('href') === '#' + entry.target.id);
+        if (!link) return;
+        tocLinks.forEach(a => a.classList.remove('active'));
+        link.classList.add('active');
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(sec => io.observe(sec));
+  })();
 })();
 </script>
