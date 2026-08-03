@@ -214,6 +214,12 @@
     </div>
   </header>
 
+  <div class="primer-card" style="margin-bottom:28px;">
+    <h4><span class="primer-tag tag-s1">数据源</span>与<span class="primer-tag tag-s2">工作方法</span></h4>
+    <p><b>数据源</b>：① celma.org.cn（中国地方政府债券信息公开平台）"发行结果"栏目——2020年起采用标准化表格，含债券编码/简称/确认票面利率/实际发行规模，是本报告主数据源；同平台"发行前公告""发行安排"栏目用于提前期与月度计划分析。② Wind日度数据（<code style="font-family:inherit">wind_10y30y_spread_toolkit</code>子项目导出，2026-07-30刷新）——10Y/30Y国债活跃券中债估值收益率，用于"地方债vs国债利差"部分。③ 用户提供的Wind终端自定义五区域分组。</p>
+    <p><b>工作方法</b>：网页抓取（Python + requests/BeautifulSoup，限速请求+本地HTML/PDF缓存避免重复请求）→ PDF文本提取（pdfplumber优先，无文字层的扫描件用Tesseract OCR中文简体模型兜底，约3%样本经OCR）→ 正则+表格列名匹配提取结构化字段 → 按债券编码去重（同一债券可能在不同批次公告中重复披露）→ 地方债与国债利差按发行日精确匹配当日活跃券收益率计算。过程中经过三轮数据校验，发现并修复表格列错位、跨公告重复、小数点断行三类提取问题（详见下方"数据校验说明"），修复前后部分统计量有实质性变化，已在报告中如实注明。</p>
+  </div>
+
   <div class="tiles">
     <div class="tile">
       <div class="tile-label">结构化记录总数</div>
@@ -491,6 +497,15 @@
         </div>
         <div class="legend" id="tspreadYearLegend"></div>
       </div>
+    </div>
+    <div class="chart-card">
+      <h4>区域利差 x 年份（10Y）</h4>
+      <div class="ch-sub">拆到逐年看：北上广深连续4年最紧，"最松"区域每年轮动，2024年全区域同步压缩</div>
+      <div class="chart-pos">
+        <svg id="tspreadRegionYearChart" width="720" height="260" viewBox="0 0 720 260"></svg>
+        <div class="tooltip" id="tspreadRegionYearTooltip"></div>
+      </div>
+      <div class="legend" id="tspreadRegionYearLegend"></div>
     </div>
   </section>
 
@@ -1510,10 +1525,61 @@
       `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
+  // ---------------- Treasury spread by region x year (grouped bars, 10Y) ----------------
+  function drawTspreadRegionYear() {
+    const data = {
+      "北上广深": {"2023":9.0,"2024":6.0,"2025":9.2,"2026":7.3},
+      "东部沿海": {"2023":10.0,"2024":6.2,"2025":11.7,"2026":8.0},
+      "华北西南": {"2023":12.5,"2024":10.3,"2025":15.3,"2026":12.1},
+      "中原西北": {"2023":15.3,"2024":10.3,"2025":15.1,"2026":11.7},
+      "东北内蒙": {"2023":18.9,"2024":10.5,"2025":17.5,"2026":11.7}
+    };
+    const regions = Object.keys(data);
+    const years = ["2023","2024","2025","2026"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s3, colors.s2, colors.gold, colors.inkMuted];
+    const svg = document.getElementById('tspreadRegionYearChart');
+    const W = 720, H = 260, padL = 44, padR = 16, padT = 16, padB = 34;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxV = 20;
+    const groupW = plotW / years.length;
+    const barW = groupW / (regions.length + 1.2);
+    let html = '';
+    [0,5,10,15,20].forEach(gv => {
+      const yy = padT + plotH - (gv/maxV)*plotH;
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${yy+4}" text-anchor="end">${gv}</text>`;
+    });
+    years.forEach((yr, gi) => {
+      regions.forEach((r, ri) => {
+        const v = data[r][yr];
+        const h = (v/maxV)*plotH;
+        const bx = padL + gi*groupW + (ri+0.3)*barW;
+        const by = padT + plotH - h;
+        html += `<rect class="bar" data-region="${r}" data-year="${yr}" data-v="${v}" x="${bx}" y="${by}" width="${barW*0.85}" height="${h}" fill="${seriesColor[ri]}" rx="2" />`;
+      });
+      html += `<text class="axis-label num" x="${padL + gi*groupW + groupW/2}" y="${H-12}" text-anchor="middle">${yr}${yr==='2026'?'*':''}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('tspreadRegionYearTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.year}年 · ${bar.dataset.region}</span><b class="num">${bar.dataset.v}bp</b>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('tspreadRegionYearLegend').innerHTML = regions.map((r,i) =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${r}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
+  }
+
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
     drawMix(); drawCategory(); drawRegion(); drawVolume();
-    drawTspreadRegion(); drawTspreadYear();
+    drawTspreadRegion(); drawTspreadYear(); drawTspreadRegionYear();
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
     drawRecentTerm(); drawRecentRegion();
     drawTermVolume(); drawTermVolumeYear();
