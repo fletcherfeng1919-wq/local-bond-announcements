@@ -97,6 +97,35 @@
   .tile-value { font-size: 26px; font-weight: 600; color: var(--ink); }
   .tile-value .unit { font-size: 14px; color: var(--ink-2); font-weight: 400; margin-left: 2px; }
 
+  /* primer / glossary */
+  .primer-intro { font-size: 14.5px; color: var(--ink-2); max-width: 760px; margin-bottom: 22px; }
+  .primer-intro b { color: var(--ink); font-weight: 600; }
+  .primer-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 28px; }
+  .primer-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px;
+  }
+  .primer-card h4 {
+    font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .primer-tag {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 4px;
+    color: var(--page);
+  }
+  .primer-tag.tag-s1 { background: var(--s1); }
+  .primer-tag.tag-s2 { background: var(--s2); }
+  .primer-tag.tag-s3 { background: var(--s3); }
+  .primer-tag.tag-gold { background: var(--gold); }
+  .primer-card p { font-size: 13px; color: var(--ink-2); margin: 0; }
+  .primer-card p + p { margin-top: 8px; }
+
+  .primer-table-wrap { overflow-x: auto; margin-bottom: 8px; }
+  .primer-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .primer-table th, .primer-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+  .primer-table th { color: var(--ink-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .primer-table td { color: var(--ink-2); }
+  .primer-table td:first-child { color: var(--ink); font-weight: 600; }
+
   /* validation callout */
   .validation-box {
     background: var(--gold-dim); border: 1px solid rgba(212,167,44,0.28); border-radius: 10px;
@@ -216,6 +245,50 @@
       <div class="v-item"><span class="v-title">④ 校验后确认</span>去重后 0 条重复；票面利率区间收窄至 1.16–4.28%（此前含①③类异常值时均值失真、甚至出现"财政弱省利率低于国债"的反常读数）；债券编码 14,430 条中仅37条为离岸债ISIN格式代码（HK/MO开头，属正常值）。</div>
     </div>
   </div>
+
+  <section id="sec-primer">
+    <div class="sec-head">
+      <div class="sec-eyebrow">背景知识</div>
+      <div class="sec-title">地方债是什么、分几类、钱花在哪</div>
+    </div>
+    <p class="primer-intro">
+      地方政府债券（简称"地方债"）是省级政府（含5个计划单列市：深圳、大连、宁波、厦门、青岛）以自身信用为担保、纳入预算管理公开发行的债券，用于弥补财政资金缺口或建设特定项目。<b>2015年之前，地方政府不能直接发债</b>，只能通过融资平台（"城投公司"）间接举债，形成了大量游离于预算外的隐性债务；2014年新《预算法》实施后，地方政府获得自主发债权限，地方债才成为规范化、市场化的直接融资工具，与"城投债"（企业信用、非政府直接负债）是两类不同性质的债券，不应混淆。
+    </p>
+
+    <div class="primer-grid">
+      <div class="primer-card">
+        <h4><span class="primer-tag tag-s1">用途</span>一般债券 vs 专项债券</h4>
+        <p><b>一般债券</b>：纳入一般公共预算，主要用于没有直接收益的公益性支出（教育、卫生、社保等基础公共服务），依靠政府一般税收收入偿还，类似"以税还债"。</p>
+        <p><b>专项债券</b>：纳入政府性基金预算，专门对应有一定收益的重大项目（收费公路、轨道交通、土地储备、棚户区改造、产业园区等），依靠项目自身收益偿还，类似"以项目收益还债"，是本报告样本中<b>占比最高的品种</b>（约65%）。</p>
+      </div>
+      <div class="primer-card">
+        <h4><span class="primer-tag tag-s2">目的</span>新增 vs 再融资</h4>
+        <p><b>新增债券</b>：在当年国务院批准的新增限额内发行，属于新增净融资，会增加地方政府债务余额。</p>
+        <p><b>再融资债券</b>：专门用于偿还到期存量地方债本金，属于"借新还旧"，不增加债务净额；其中2023年起大规模发行的<b>特殊再融资债券</b>被专门用于置换存量隐性债务（城投平台等的表外负债），是本报告发现"2023年为结构性拐点"的政策背景（详见"发行结构时间序列"）。</p>
+      </div>
+      <div class="primer-card">
+        <h4><span class="primer-tag tag-s3">发行方式</span>公开招标 vs 定向承销</h4>
+        <p>绝大多数地方债通过<b>公开招标</b>面向承销团竞价发行，本报告的"发行前公告→招投标"提前期分析针对的正是这一类。</p>
+        <p>少量特殊再融资债券采用<b>定向承销</b>方式，直接面向持有存量隐性债务的特定银行发行，用于"一对一"置换，不进入公开招标流程，故不在本报告的提前期统计范围内。</p>
+      </div>
+      <div class="primer-card">
+        <h4><span class="primer-tag tag-gold">投资者与市场特征</span>持有结构</h4>
+        <p>地方债利息收入<b>免征增值税和企业所得税</b>，与国债享受同等税收优惠；商业银行是最主要的持有主体（自营+承销团配置），保险、公募基金等机构次之，个人投资者占比很小（区别于面向个人的储蓄国债）。</p>
+        <p>尽管信用等级隐含与主权信用挂钩，但二级市场流动性明显低于国债，这正是本报告"地方债vs国债利差"部分测算出的持续正利差（10Y中位17.0bp）的主要解释——市场普遍将其归因于流动性溢价而非信用风险溢价。</p>
+      </div>
+    </div>
+
+    <div class="primer-table-wrap">
+      <table class="primer-table">
+        <thead><tr><th>标准化期限</th><th>覆盖范围</th><th>典型用途倾向</th></tr></thead>
+        <tbody>
+          <tr><td>1Y / 2Y / 3Y</td><td>短期限，样本量较小</td><td>多见于再融资债券，匹配到期存量券的期限接续</td></tr>
+          <tr><td>5Y / 7Y / 10Y</td><td>中期限，市场主力期限</td><td>一般债券、专项债券均广泛使用，10Y是各类分析中样本量最大的单一期限</td></tr>
+          <tr><td>15Y / 20Y / 30Y</td><td>超长期限</td><td>多匹配收费公路、轨道交通等长周期收益项目的专项债券，2020年后发行占比持续上升</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <section id="sec-curve">
     <div class="sec-head">
