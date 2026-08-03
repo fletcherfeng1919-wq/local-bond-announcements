@@ -379,6 +379,38 @@
     </div>
   </section>
 
+  <section id="sec-recent-volume">
+    <div class="sec-head">
+      <div class="sec-eyebrow">2022年以来发行规模 · 分期限 / 分地区</div>
+      <div class="sec-title">总量逐年稳步扩大，中原西北与华北西南规模领先（受省份数量影响）</div>
+    </div>
+    <p class="finding">
+      2022–2025年全年发行总量从<span class="num">6.89万亿</span>稳步增至<span class="num">9.67万亿</span>元；2026年（<span style="color:var(--bad)">仅统计至7月，未满一年</span>）已达6.28万亿，若按此节奏全年化预计将继续增长。
+      分期限看，10年期各年均是规模最大的单一期限（2025年2.65万亿），但期限结构持续拉长的趋势在2022年后依然延续。
+      分地区看，<b>中原西北、华北西南两组规模领先</b>，但这两组涵盖省份数量也最多（分别为12省、9省），总量领先很大程度上是"省份数量多"而非"单省发行力度更大"，与此前"利差分析"中北上广深单券定价更紧但总量偏小的结构相互印证。
+    </p>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>分期限发行规模</h4>
+        <div class="ch-sub">2022–2026年（2026年仅至7月），按期限（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="recentTermChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="recentTermTooltip"></div>
+        </div>
+        <div class="legend" id="recentTermLegend"></div>
+      </div>
+      <div class="chart-card">
+        <h4>分地区发行规模</h4>
+        <div class="ch-sub">2022–2026年（2026年仅至7月），按区域（万亿元）</div>
+        <div class="chart-pos">
+          <svg id="recentRegionChart" width="480" height="280" viewBox="0 0 480 280"></svg>
+          <div class="tooltip" id="recentRegionTooltip"></div>
+        </div>
+        <div class="legend" id="recentRegionLegend"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="sec-mix">
     <div class="sec-head">
       <div class="sec-eyebrow">发行结构时间序列 · 按年份</div>
@@ -1368,11 +1400,122 @@
       `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${t}</span>`).join('');
   }
 
+  // ---------------- 2022+ volume by term (stacked bars) ----------------
+  function drawRecentTerm() {
+    const data = {
+      "2022":[58,313,4260,8062,11880,16044,10203,10162,7967],
+      "2023":[4,178,5676,14797,16429,20374,8340,9477,10159],
+      "2024":[286,163,2781,8780,13153,26287,9709,12372,16251],
+      "2025":[378,325,1968,6634,15443,26544,9791,15033,20579],
+      "2026*":[177,111,1244,4593,8595,18049,6626,9386,14067]
+    };
+    const terms = ["1Y","2Y","3Y","5Y","7Y","10Y","15Y","20Y","30Y"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s1, colors.s2, colors.s2, colors.s2, colors.gold, colors.s3, colors.s3, colors.s3];
+    const years = Object.keys(data);
+    const svg = document.getElementById('recentTermChart');
+    const W = 480, H = 280, padL = 44, padR = 16, padT = 14, padB = 32;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxTotal = Math.max(...years.map(y => data[y].reduce((a,b)=>a+b,0)));
+    const barW = plotW / years.length * 0.58;
+    const step = plotW / years.length;
+    const yScale = v => (v/maxTotal)*plotH;
+    let html = '';
+    [0,30000,60000,90000].forEach(gv => {
+      const yy = padT + plotH - yScale(gv);
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${yy+4}" text-anchor="end">${(gv/10000).toFixed(0)}</text>`;
+    });
+    years.forEach((yr,i) => {
+      const vals = data[yr];
+      const cx = padL + i*step + step/2 - barW/2;
+      let cum = 0;
+      vals.forEach((v, ci) => {
+        const h = yScale(v);
+        const yy = padT + plotH - yScale(cum) - h;
+        html += `<rect class="bar" data-year="${yr}" data-term="${terms[ci]}" data-value="${v}" x="${cx}" y="${yy}" width="${barW}" height="${h}" fill="${seriesColor[ci]}" />`;
+        cum += v;
+      });
+      html += `<text class="axis-label num" x="${cx+barW/2}" y="${H-14}" text-anchor="middle">${yr}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('recentTermTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const v = (Number(bar.dataset.value)/10000).toFixed(2);
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.year} · ${bar.dataset.term}</span><b class="num">${v}万亿元</b>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('recentTermLegend').innerHTML =
+      ['1-2Y','3-7Y','10Y','15-30Y'].map((label,i) => {
+        const c = [colors.s1, colors.s2, colors.gold, colors.s3][i];
+        return `<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${label}</span>`;
+      }).join('') + `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
+  }
+
+  // ---------------- 2022+ volume by region (stacked bars) ----------------
+  function drawRecentRegion() {
+    const data = {
+      "2022":[17517,8364,17829,15324,9916], "2023":[17405,8962,22544,19686,16838],
+      "2024":[20806,11777,23650,21104,12768], "2025":[24417,11125,25488,20994,14670],
+      "2026*":[16730,6183,17928,12859,9148]
+    };
+    const regions = ["北上广深","东部沿海","华北西南","中原西北","东北内蒙"];
+    const colors = themeColors();
+    const seriesColor = [colors.s1, colors.s3, colors.s2, colors.gold, colors.inkMuted];
+    const years = Object.keys(data);
+    const svg = document.getElementById('recentRegionChart');
+    const W = 480, H = 280, padL = 44, padR = 16, padT = 14, padB = 32;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxTotal = Math.max(...years.map(y => data[y].reduce((a,b)=>a+b,0)));
+    const barW = plotW / years.length * 0.58;
+    const step = plotW / years.length;
+    const yScale = v => (v/maxTotal)*plotH;
+    let html = '';
+    [0,30000,60000,90000].forEach(gv => {
+      const yy = padT + plotH - yScale(gv);
+      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${yy+4}" text-anchor="end">${(gv/10000).toFixed(0)}</text>`;
+    });
+    years.forEach((yr,i) => {
+      const vals = data[yr];
+      const cx = padL + i*step + step/2 - barW/2;
+      let cum = 0;
+      vals.forEach((v, ci) => {
+        const h = yScale(v);
+        const yy = padT + plotH - yScale(cum) - h;
+        html += `<rect class="bar" data-year="${yr}" data-region="${regions[ci]}" data-value="${v}" x="${cx}" y="${yy}" width="${barW}" height="${h}" fill="${seriesColor[ci]}" />`;
+        cum += v;
+      });
+      html += `<text class="axis-label num" x="${cx+barW/2}" y="${H-14}" text-anchor="middle">${yr}</text>`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('recentRegionTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.bar').forEach(bar => {
+      bar.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const v = (Number(bar.dataset.value)/10000).toFixed(2);
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${bar.dataset.year} · ${bar.dataset.region}</span><b class="num">${v}万亿元</b>`);
+      });
+      bar.addEventListener('mouseleave', () => hideTip(tip));
+    });
+    document.getElementById('recentRegionLegend').innerHTML = regions.map((r,i) =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${r}</span>`).join('') +
+      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
+  }
+
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
     drawMix(); drawCategory(); drawRegion(); drawVolume();
     drawTspreadRegion(); drawTspreadYear();
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
+    drawRecentTerm(); drawRecentRegion();
     drawTermVolume(); drawTermVolumeYear();
     fillOutlierTable();
   }
