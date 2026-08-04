@@ -141,6 +141,99 @@ def _render_js_block(built: dict) -> str:
     )
 
 
+CALENDAR_BLOCK_RE = re.compile(
+    r"(    // CALENDAR_DATA_START.*?\n)(.*?)(    // CALENDAR_DATA_END\n)",
+    re.DOTALL,
+)
+
+
+def _build_calendar_data(result_df: pd.DataFrame):
+    """Returns a dict describing the most recently *confirmed* issuance month
+    (from 发行结果/state_results.csv, not the forward-looking plan data), or
+    None if there's no usable issue_date at all. Confirmed results lag actual
+    auctions by roughly 1-2 weeks (celma.org.cn publishes the results PDF
+    after settlement), so this is deliberately "the month containing the
+    latest issue_date we have", not "the current calendar month" -- forcing
+    it to the current month would show a mostly-empty grid for the first half
+    of every month even though the data isn't actually missing, just not
+    published yet."""
+    df = result_df.dropna(subset=["issue_date"]).copy()
+    if df.empty:
+        return None
+    df["issue_date"] = pd.to_datetime(df["issue_date"])
+    latest = df["issue_date"].max()
+    month_start = pd.Timestamp(year=latest.year, month=latest.month, day=1)
+    month_end = month_start + pd.offsets.MonthEnd(1)
+    month_df = df[(df["issue_date"] >= month_start) & (df["issue_date"] <= month_end)].copy()
+
+    days = {}
+    for day, day_df in month_df.groupby(month_df["issue_date"].dt.strftime("%Y-%m-%d")):
+        bonds = [
+            {
+                "province": r.province,
+                "bondShortName": r.bond_short_name if pd.notna(r.bond_short_name) else r.bond_name,
+                "term": r.term,
+                "amountYi": round(float(r.total_amount_yi), 2) if pd.notna(r.total_amount_yi) else None,
+                "couponPct": round(float(r.coupon_rate_pct), 2) if pd.notna(r.coupon_rate_pct) else None,
+            }
+            for r in day_df.sort_values("total_amount_yi", ascending=False).itertuples()
+        ]
+        days[day] = {
+            "n": len(day_df),
+            "amountYi": round(float(day_df["total_amount_yi"].sum()), 1),
+            "bonds": bonds,
+        }
+
+    return {
+        "monthLabel": f"{month_start.year}年{month_start.month}月",
+        "asOf": latest.strftime("%Y-%m-%d"),
+        "days": days,
+    }
+
+
+def _js_bond(b: dict) -> str:
+    amt = "null" if b["amountYi"] is None else f'{b["amountYi"]:.2f}'
+    cpn = "null" if b["couponPct"] is None else f'{b["couponPct"]:.2f}'
+    return (
+        "{ province: %s, bondShortName: %s, term: %s, amountYi: %s, couponPct: %s }"
+        % (_js_string(b["province"]), _js_string(str(b["bondShortName"])), _js_string(str(b["term"])), amt, cpn)
+    )
+
+
+def _render_calendar_js_block(built: dict) -> str:
+    day_entries = []
+    for day, d in sorted(built["days"].items()):
+        bond_lines = ", ".join(_js_bond(b) for b in d["bonds"])
+        day_entries.append(f'      {_js_string(day)}: {{ n: {d["n"]}, amountYi: {d["amountYi"]}, bonds: [{bond_lines}] }}')
+    days_js = ",\n".join(day_entries)
+    return (
+        f"    const calendarData = {{\n"
+        f"      monthLabel: {_js_string(built['monthLabel'])}, asOf: {_js_string(built['asOf'])},\n"
+        f"      days: {{\n{days_js}\n      }},\n"
+        f"    }};\n"
+    )
+
+
+def refresh_calendar_section(result_df: pd.DataFrame, dashboard_path=DASHBOARD_PATH) -> str | None:
+    """Regenerate the embedded calendarData block (confirmed daily issuance
+    calendar) inside the dashboard HTML. Same no-op-on-failure contract as
+    refresh_plan_section."""
+    if not dashboard_path.exists():
+        return None
+    built = _build_calendar_data(result_df)
+    if built is None:
+        return None
+
+    html = dashboard_path.read_text(encoding="utf-8")
+    if not CALENDAR_BLOCK_RE.search(html):
+        return None
+
+    new_block = _render_calendar_js_block(built)
+    html = CALENDAR_BLOCK_RE.sub(lambda m: m.group(1) + new_block + m.group(3), html, count=1)
+    dashboard_path.write_text(html, encoding="utf-8")
+    return f"{built['monthLabel']} · {len(built['days'])}天有数据 · 截至{built['asOf']}"
+
+
 def refresh_plan_section(plan_df: pd.DataFrame, dashboard_path=DASHBOARD_PATH) -> str | None:
     """Regenerate the embedded planData block inside the dashboard HTML.
     Returns a short status string on success, None if there was nothing to do

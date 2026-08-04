@@ -193,6 +193,37 @@
     .wrap { margin: 0 auto 0 max(300px, calc(50% - 540px)); }
   }
 
+  /* issuance calendar (confirmed results, from 发行结果) */
+  .cal-month-label { font-size: 13px; color: var(--ink); font-weight: 600; margin-bottom: 12px; }
+  .cal-month-label .num { color: var(--gold); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal-weekday {
+    font-size: 10.5px; color: var(--ink-muted); text-align: center; padding-bottom: 4px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .cal-day {
+    position: relative; min-height: 62px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); padding: 6px 7px 10px; transition: border-color .12s, background .12s;
+  }
+  .cal-day.empty { visibility: hidden; }
+  .cal-day.has-data { cursor: pointer; }
+  .cal-day.has-data:hover { border-color: rgba(212,167,44,0.5); }
+  .cal-day.selected { border-color: var(--gold); background: var(--gold-dim); }
+  .cal-day-num {
+    font-size: 11.5px; font-weight: 600; color: var(--ink-muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .cal-day.has-data .cal-day-num { color: var(--ink); }
+  .cal-day-chip { margin-top: 5px; font-size: 10px; color: var(--ink-muted); line-height: 1.35; }
+  .cal-day-chip b { color: var(--ink-2); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; }
+  .cal-day-bar {
+    position: absolute; left: 7px; right: 7px; bottom: 6px; height: 3px; border-radius: 2px;
+    background: var(--s1);
+  }
+  .cal-detail { margin-top: 18px; }
+  .cal-detail-head { font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+  .cal-detail-head b { color: var(--ink); }
+
   /* section group divider */
   .group-divider { display: flex; align-items: baseline; gap: 14px; margin: 8px 0 28px; }
   .group-divider .gd-index { font-size: 12px; color: var(--gold); font-weight: 700; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
@@ -339,7 +370,6 @@
         <li><a href="#sec-category">券种利差</a></li>
         <li><a href="#sec-region">区域利差</a></li>
         <li><a href="#sec-treasury-spread">地方债 vs 国债利差</a></li>
-        <li><a href="#sec-research-context">结合市场研究框架的解读</a></li>
       </ul>
     </div>
     <div class="side-toc-group">
@@ -518,6 +548,23 @@
         <div class="legend" id="planProvLegendNext"></div>
       </div>
     </div>
+    <div class="chart-card">
+      <h4>发行日历 · 已确认结果</h4>
+      <div class="ch-sub" id="calSub">按发行日(issue_date)，来自"发行结果"公告，与上方"计划"数据不是同一口径，且存在1–2周发布滞后</div>
+      <div class="cal-month-label" id="calMonthLabel">加载中…</div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-detail">
+        <div class="cal-detail-head" id="calDetailHead"></div>
+        <div class="chart-scroll">
+          <table id="calDetailTable">
+            <thead>
+              <tr><th>省份</th><th>债券简称</th><th>期限</th><th style="text-align:right">发行规模(亿元)</th><th style="text-align:right">票面利率(%)</th></tr>
+            </thead>
+            <tbody id="calDetailTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="group-divider"><span class="gd-index">02</span><span class="gd-label">发行量</span><span class="gd-line"></span></div>
@@ -687,35 +734,37 @@
 
   <section id="sec-category">
     <div class="sec-head">
-      <div class="sec-eyebrow">券种利差 · 10年期口径，原始利率 vs 国债利差两种口径交叉检验</div>
-      <div class="sec-title">"再融资定价更紧"在票面利率口径下成立，但控制时间因素后并不稳健</div>
+      <div class="sec-eyebrow">再融资债券研究 · 定义、发行时间、规模、省份集中度</div>
+      <div class="sec-title">七年累计26万亿、占发行总量46%——集中度不比全市场更高，但"谁在发"明显转向债务压力省份</div>
     </div>
     <p class="finding">
-      同为10年期，<b>再融资债券</b>中位票面利率仅<span class="num">2.31%</span>，比专项新增债券（<span class="num">2.93%</span>）低约<span class="num">62bp</span>，比一般新增债券（<span class="num">2.68%</span>）低约<span class="num">37bp</span>，容易被读成"市场对偿债置换类债券定价持续更友好"。但这一比较存在<b>时间构成混淆</b>：再融资债券的发行时点系统性偏向近年（2023年后占比过半，详见"发行结构时间序列"），而近年恰好是整体利率下行、绝对水平最低的阶段——跨品种比较票面利率，实际上把"品种差异"和"发行年份分布不同"这两件事混在了一起。
+      <b>定义</b>：再融资债券专门用于偿还到期存量地方债本金，属于"借新还旧"，不增加地方政府债务净额——与对应当年新增限额、会增加债务余额的"新增债券"是完全不同性质的两类工具。其中2023年7月中央政治局会议提出"一揽子化债方案"后各地大规模发行的<b>特殊再融资债券</b>是一个特殊子类：不同于普通再融资债券只置换"到期地方债"，特殊再融资债券被专门用于置换城投平台等主体的<b>表外隐性债务</b>，是下方"发行时间"一节2023年增速跳升的直接政策源头。
     </p>
     <p class="finding" style="margin-top:14px;">
-      改用与国债利差（已按发行日剥离掉整体利率水平）重新检验，结论明显不同：<b>全周期合并看，再融资利差中位<span class="num">15.6bp</span>介于一般新增（<span class="num">14.6bp</span>）与专项新增（<span class="num">19.5bp</span>，反而最宽）之间，并非最紧</b>；分年份拆开看更清楚——<b>2023、2024两年再融资利差反而是三类中最宽的</b>（分别为13.7bp、10.5bp），直到2025、2026年才回落到居中位置（详见右侧图表）。分区域交叉检验的结果也不统一：北上广深、东部沿海、东北内蒙三组中再融资利差确实相对最紧，但中原西北与一般新增打平最宽、华北西南居中，谈不上一个能跨区域复现的普遍规律。
+      <b>发行时间</b>：年度发行规模从2019年的<span class="num">9,635亿元</span>增长到2025年的<span class="num">46,974亿元</span>，累计增长约<span class="num">4.9倍</span>，但增速并不均匀——2022→2023单年跳升<span class="num">76.1%</span>（25,426→44,774亿元），与"一揽子化债"政策窗口高度吻合；此后2024、2025两年增速明显放缓，维持在4.6–4.7万亿元的高位平台，2026年至今（仅7个月）已达3.56万亿元。月度分布上，再融资债券的招标时点与全市场整体规律基本一致（3–6月、10–11月偏高，1–2月、9月、12月偏低），未见独立于大盘节奏的特殊季节性。
     </p>
     <p class="finding" style="margin-top:14px;">
-      <b>综合结论需要比初版更谨慎</b>：原始票面利率口径下"再融资定价更紧"的结论，很可能主要是再融资债券发行时点结构性偏后（对应更低的整体利率环境）造成的统计假象，而非稳健的品种定价溢价。控制了时间因素后，再融资债券的相对定价是<b>喜忧参半</b>——多数区域略紧，但在2023–2024年这一特殊再融资发行高峰期反而阶段性最宽，不构成可以简单归纳的"再融资=更紧"的普遍结论。
+      <b>规模</b>：2019年以来再融资债券累计发行<span class="num">25.7万亿元</span>，占同期地方债发行总量（56.3万亿元）的<span class="num">45.7%</span>——已接近半壁江山，是理解近年地方债供给结构不可忽视的主线。
+    </p>
+    <p class="finding" style="margin-top:14px;">
+      <b>省份集中度</b>：累计发行前5省（江苏、贵州、湖南、山东、四川）合计占再融资总量的<span class="num">29.6%</span>，前10省占<span class="num">51.0%</span>——与全市场所有券种合计的集中度（前5省29.0%、前10省50.7%）几乎相同，<b>说明再融资债券的省份集中程度并不比地方债市场整体更高</b>，大体仍随各省经济体量/发债规模的自然分布。但<b>发行人构成本身发生了明显位移</b>：全市场前5大发行省是江苏、广东、山东、四川、浙江（财政实力较强的省份），而再融资口径下广东、浙江被挤出前5，换成了贵州、湖南——两省并非经济体量最大的省份，但都是市场认知中隐性债务压力较大的地区，与"特殊再融资债券定向用于置换债务压力省份隐性负债"的政策设计相符。分区域看，华北西南（含贵州、云南等）以<span class="num">27.8%</span>的份额领先，东部沿海最低（<span class="num">8.8%</span>）。
     </p>
     <div class="chart-row">
       <div class="chart-card">
-        <h4>原始票面利率（可能受年份分布混淆）</h4>
-        <div class="ch-sub">10Y 中位票面利率，按券种</div>
+        <h4>发行时间与规模</h4>
+        <div class="ch-sub">再融资债券年度发行规模（亿元），2019–2026（2026仅至7月）</div>
         <div class="chart-pos">
-          <svg id="categoryChart" width="480" height="200" viewBox="0 0 480 200"></svg>
-          <div class="tooltip" id="categoryTooltip"></div>
+          <svg id="refiTrendChart" width="480" height="260" viewBox="0 0 480 260"></svg>
+          <div class="tooltip" id="refiTrendTooltip"></div>
         </div>
       </div>
       <div class="chart-card">
-        <h4>国债利差（控制了年份因素）</h4>
-        <div class="ch-sub">10Y 中位利差(bp)，按券种 x 发行年份</div>
+        <h4>省份集中度</h4>
+        <div class="ch-sub">累计发行规模前15省（亿元），2019年以来</div>
         <div class="chart-pos">
-          <svg id="categorySpreadYearChart" width="480" height="260" viewBox="0 0 480 260"></svg>
-          <div class="tooltip" id="categorySpreadYearTooltip"></div>
+          <svg id="refiProvinceChart" width="480" height="300" viewBox="0 0 480 300"></svg>
+          <div class="tooltip" id="refiProvinceTooltip"></div>
         </div>
-        <div class="legend" id="categorySpreadYearLegend"></div>
       </div>
     </div>
   </section>
@@ -775,20 +824,6 @@
       </div>
       <div class="legend" id="tspreadRegionYearLegend"></div>
     </div>
-  </section>
-
-  <section id="sec-research-context">
-    <div class="sec-head">
-      <div class="sec-eyebrow">结合市场研究框架的解读</div>
-      <div class="sec-title">利差压缩与"一揽子化债"政策窗口吻合，但截面检验不支持简单机械关系</div>
-    </div>
-    <p class="finding">
-      地方债相对国债长期存在正利差，市场普遍将其归因于<b>流动性溢价</b>——尽管两者同享税收优惠且隐含中央信用支撑，但地方债二级市场换手率远低于国债，投资者需要额外补偿换取流动性折让；本报告样本中利差始终为正（10Y中位<span class="num">17.0bp</span>，30Y中位<span class="num">18.0bp</span>）且从未收敛到零，与这一解释相符。区域分层则通常被归因于<b>地方财政实力与隐性债务认知差异</b>——市场对财政强省（如江浙沪）与债务压力较大地区的城投/隐性债务风险定价不同，本报告"北上广深最紧、东北内蒙最松"的结果与该框架一致，且经coupon直接对比与国债利差两套独立口径互相验证。
-    </p>
-    <p class="finding" style="margin-top:14px;">
-      2023–2024年利差压缩期，时间上与2023年7月中央政治局会议提出"一揽子化债方案"后启动的<b>特殊再融资债券</b>发行高峰高度重合——本报告数据显示再融资债券发行占比同期从37%跳升至52%（详见"发行结构时间序列"）。将其解读为"化债政策提振市场对地方信用的信心，进而压缩利差"是一种自然但需要谨慎验证的假设。
-      <b>为此本报告直接做了检验</b>：按省份计算2023–2025年再融资债券发行占比与平均利差的相关系数，结果仅为<span class="num">0.12</span>（36个省份样本），<b>相关性很弱，不支持"某省当年再融资占比越高、利差压缩越多"的简单机械关系</b>。更合理的解释是：2022–2024年的压缩更可能是全市场共同的风险偏好/政策信心变化（几乎所有区域同步压缩，而非哪个省化债力度大就压缩更多），区域间的利差差异本身则主要由更持久的财政实力差距决定，而非当年再融资发行节奏。2025年利差转而走阔，可能与当年发行供给量显著放大（详见"发行规模趋势"，2025年再融资规模达4.68万亿的历史新高）对二级市场消化能力形成压力有关，但受限于数据维度，本报告不对此单独作因果检验。
-    </p>
   </section>
 
   <div class="group-divider"><span class="gd-index">04</span><span class="gd-label">附录</span><span class="gd-line"></span></div>
@@ -1092,91 +1127,87 @@
       `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
-  // ---------------- Category bar chart ----------------
-  function drawCategory() {
+  // ---------------- Refinancing bond: issuance trend by year (line) ----------------
+  function drawRefiTrend() {
+    const data = {"2019":9635,"2020":18422,"2021":30145,"2022":25426,"2023":44774,"2024":46443,"2025":46974,"2026*":35566};
+    const years = Object.keys(data);
+    const colors = themeColors();
+    const svg = document.getElementById('refiTrendChart');
+    const W = 480, H = 260, padL = 46, padR = 14, padT = 14, padB = 30;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const yMax = 50000;
+    const x = i => padL + (i / (years.length - 1)) * plotW;
+    const y = v => padT + plotH - (v / yMax) * plotH;
+    let html = '';
+    [0,10000,20000,30000,40000,50000].forEach(gv => {
+      html += `<line class="gridline" x1="${padL}" y1="${y(gv)}" x2="${W-padR}" y2="${y(gv)}" />`;
+      html += `<text class="axis-label num" x="${padL-8}" y="${y(gv)+4}" text-anchor="end">${(gv/10000).toFixed(1)}万</text>`;
+    });
+    years.forEach((yr,i) => { html += `<text class="axis-label num" x="${x(i)}" y="${H-10}" text-anchor="middle">${yr}</text>`; });
+    let pts = years.map((yr,i) => [x(i), y(data[yr]), yr, data[yr]]);
+    const path = pts.map((p,idx) => (idx===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    html += `<path d="${path}" fill="none" stroke="${colors.gold}" stroke-width="2.4" />`;
+    pts.forEach(p => {
+      html += `<circle class="pt" data-year="${p[2]}" data-val="${p[3]}" cx="${p[0]}" cy="${p[1]}" r="8" fill="transparent" style="cursor:pointer" />`;
+      html += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${colors.gold}" />`;
+    });
+    svg.innerHTML = html;
+    const tip = document.getElementById('refiTrendTooltip');
+    const wrap = svg.closest('.chart-pos');
+    svg.querySelectorAll('.pt').forEach(pt => {
+      pt.addEventListener('mousemove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const v = Number(pt.dataset.val).toLocaleString('zh-CN');
+        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
+          `<span class="t-label">${pt.dataset.year}年</span><b class="num">${v}</b> 亿元`);
+      });
+      pt.addEventListener('mouseleave', () => hideTip(tip));
+    });
+  }
+
+  // ---------------- Refinancing bond: provincial concentration (horizontal bars) ----------------
+  function drawRefiProvinceChart() {
     const data = [
-      { label: "专项新增债券", value: 2.93, n: 2209 },
-      { label: "一般新增债券", value: 2.68, n: 389 },
-      { label: "再融资债券",   value: 2.31, n: 1167 },
+      { province: "江苏省", value: 21644 }, { province: "贵州省", value: 14809 },
+      { province: "湖南省", value: 14065 }, { province: "山东省", value: 13646 },
+      { province: "四川省", value: 13356 }, { province: "河南省", value: 12041 },
+      { province: "云南省", value: 11810 }, { province: "安徽省", value: 11417 },
+      { province: "辽宁省", value: 10721 }, { province: "天津市", value: 10100 },
+      { province: "内蒙古自治区", value: 9879 }, { province: "北京市", value: 9728 },
+      { province: "湖北省", value: 9681 }, { province: "浙江省", value: 9554 },
+      { province: "重庆市", value: 9084 },
     ];
     const colors = themeColors();
-    const svg = document.getElementById('categoryChart');
-    const W = 480, padL = 100, padR = 50, padT = 10, padB = 10;
+    const svg = document.getElementById('refiProvinceChart');
+    const W = 480, padL = 100, padR = 56, padT = 10, padB = 10;
     const plotW = W - padL - padR;
-    const barH = 34, gap = 20;
-    const vMax = 3.4;
+    const barH = 15, gap = 6;
+    const vMax = Math.max(...data.map(d => d.value));
     const xScale = v => (v / vMax) * plotW;
     let html = '';
     data.forEach((d, i) => {
       const yy = padT + i * (barH + gap);
       const w = xScale(d.value);
-      html += `<text class="bar-label" x="${padL - 12}" y="${yy + barH/2 + 4}" text-anchor="end">${d.label}</text>`;
-      html += `<rect class="bar" data-label="${d.label}" data-value="${d.value}" data-n="${d.n}" x="${padL}" y="${yy}" width="${w}" height="${barH}" rx="4" fill="${colors.s1}" />`;
-      html += `<text class="bar-value" x="${padL + w + 10}" y="${yy + barH/2 + 4}">${d.value.toFixed(2)}%</text>`;
+      const isTop5 = i < 5;
+      html += `<text class="bar-label" x="${padL - 10}" y="${yy + barH/2 + 4}" text-anchor="end" style="font-size:11px">${d.province}</text>`;
+      html += `<rect class="bar" data-province="${d.province}" data-value="${d.value}" x="${padL}" y="${yy}" width="${w}" height="${barH}" rx="3" fill="${isTop5 ? colors.gold : colors.s1}" />`;
+      html += `<text class="bar-value" x="${padL + w + 8}" y="${yy + barH/2 + 4}" style="font-size:11px">${(d.value/10000).toFixed(1)}万亿</text>`;
     });
     const totalH = padT + data.length * (barH+gap) - gap + padB;
     svg.setAttribute('height', totalH);
     svg.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
     svg.innerHTML = html;
-    const tip = document.getElementById('categoryTooltip');
+    const tip = document.getElementById('refiProvinceTooltip');
     const wrap = svg.closest('.chart-pos');
     svg.querySelectorAll('.bar').forEach(bar => {
       bar.addEventListener('mousemove', e => {
         const rect = wrap.getBoundingClientRect();
+        const v = Number(bar.dataset.value).toLocaleString('zh-CN');
         showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
-          `<span class="t-label">样本数</span><b class="num">${bar.dataset.n}</b> 条 10Y 债券`);
+          `<span class="t-label">${bar.dataset.province}</span><b class="num">${v}</b> 亿元累计（2019年以来）`);
       });
       bar.addEventListener('mouseleave', () => hideTip(tip));
     });
-  }
-
-  // ---------------- Category spread by year (grouped bars, treasury-spread bp) ----------------
-  function drawCategorySpreadYear() {
-    const data = {
-      "一般新增": {"2023":11.5,"2024":8.8,"2025":11.7,"2026":10.7},
-      "专项新增": {"2023":11.2,"2024":8.0,"2025":19.0,"2026":16.4},
-      "再融资":   {"2023":13.7,"2024":10.5,"2025":17.1,"2026":15.4}
-    };
-    const cats = Object.keys(data);
-    const years = ["2023","2024","2025","2026"];
-    const colors = themeColors();
-    const seriesColor = [colors.s1, colors.s2, colors.s3];
-    const svg = document.getElementById('categorySpreadYearChart');
-    const W = 480, H = 260, padL = 34, padR = 14, padT = 16, padB = 34;
-    const plotW = W - padL - padR, plotH = H - padT - padB;
-    const maxV = 20;
-    const groupW = plotW / years.length;
-    const barW = groupW / (cats.length + 1.2);
-    let html = '';
-    [0,5,10,15,20].forEach(gv => {
-      const yy = padT + plotH - (gv/maxV)*plotH;
-      html += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" />`;
-      html += `<text class="axis-label num" x="${padL-6}" y="${yy+4}" text-anchor="end">${gv}</text>`;
-    });
-    years.forEach((yr, gi) => {
-      cats.forEach((cat, ci) => {
-        const v = data[cat][yr];
-        const h = (v/maxV)*plotH;
-        const bx = padL + gi*groupW + (ci+0.3)*barW;
-        const by = padT + plotH - h;
-        html += `<rect class="bar" data-cat="${cat}" data-year="${yr}" data-v="${v}" x="${bx}" y="${by}" width="${barW*0.85}" height="${h}" fill="${seriesColor[ci]}" rx="2" />`;
-      });
-      html += `<text class="axis-label num" x="${padL + gi*groupW + groupW/2}" y="${H-12}" text-anchor="middle">${yr}${yr==='2026'?'*':''}</text>`;
-    });
-    svg.innerHTML = html;
-    const tip = document.getElementById('categorySpreadYearTooltip');
-    const wrap = svg.closest('.chart-pos');
-    svg.querySelectorAll('.bar').forEach(bar => {
-      bar.addEventListener('mousemove', e => {
-        const rect = wrap.getBoundingClientRect();
-        showTip(tip, e.clientX - rect.left, e.clientY - rect.top,
-          `<span class="t-label">${bar.dataset.year}年 · ${bar.dataset.cat}</span><b class="num">${bar.dataset.v}bp</b>`);
-      });
-      bar.addEventListener('mouseleave', () => hideTip(tip));
-    });
-    document.getElementById('categorySpreadYearLegend').innerHTML = cats.map((cat,i) =>
-      `<span class="legend-item"><span class="legend-dot" style="background:${seriesColor[i]}"></span>${cat}</span>`).join('') +
-      `<span class="legend-item" style="color:var(--ink-muted)">*2026仅至7月</span>`;
   }
 
   // ---------------- Region bar chart ----------------
@@ -1569,6 +1600,91 @@
     }
     renderProvinceMonth(tm, { title: 'planProvTitleThis', sub: 'planProvSubThis', chart: 'planProvChartThis', tooltip: 'planProvTooltipThis', legend: 'planProvLegendThis' });
     renderProvinceMonth(nm, { title: 'planProvTitleNext', sub: 'planProvSubNext', chart: 'planProvChartNext', tooltip: 'planProvTooltipNext', legend: 'planProvLegendNext' });
+  }
+
+  // ---------------- Issuance calendar (confirmed 发行结果, month grid + click-through detail) ----------------
+  function drawPlanCalendar() {
+    // CALENDAR_DATA_START -- auto-generated by src/build_dashboard_plan.py each time `python main.py` runs; do not hand-edit the lines between these markers
+    const calendarData = {
+      monthLabel: "2026年7月", asOf: "2026-07-27",
+      days: {
+      "2026-07-02": { n: 10, amountYi: 108.3, bonds: [{ province: "西藏自治区", bondShortName: "26西藏债06", term: "10Y", amountYi: 62.72, couponPct: 1.84 }, { province: "西藏自治区", bondShortName: "26西藏债05", term: "7Y", amountYi: 13.18, couponPct: 1.62 }, { province: "西藏自治区", bondShortName: "26西藏债12", term: "20Y", amountYi: 12.01, couponPct: 2.40 }, { province: "西藏自治区", bondShortName: "26西藏债09", term: "5Y", amountYi: 9.90, couponPct: 1.49 }, { province: "西藏自治区", bondShortName: "26西藏债07", term: "15Y", amountYi: 3.23, couponPct: 2.23 }, { province: "西藏自治区", bondShortName: "26西藏债04", term: "5Y", amountYi: 2.92, couponPct: 1.49 }, { province: "西藏自治区", bondShortName: "26西藏债08", term: "20Y", amountYi: 1.38, couponPct: 2.41 }, { province: "西藏自治区", bondShortName: "26西藏债13", term: "30Y", amountYi: 1.30, couponPct: 2.45 }, { province: "西藏自治区", bondShortName: "26西藏债11", term: "15Y", amountYi: 1.04, couponPct: 2.23 }, { province: "西藏自治区", bondShortName: "26西藏债10", term: "10Y", amountYi: 0.65, couponPct: 1.88 }] },
+      "2026-07-07": { n: 18, amountYi: 526.9, bonds: [{ province: "黑龙江省", bondShortName: "26黑龙江债18", term: "30Y", amountYi: 127.00, couponPct: 2.42 }, { province: "黑龙江省", bondShortName: "26黑龙江债19", term: "30Y", amountYi: 99.00, couponPct: 2.42 }, { province: "天津市", bondShortName: "26天津53", term: "30Y", amountYi: 57.00, couponPct: 2.42 }, { province: "天津市", bondShortName: "26天津52", term: "10Y", amountYi: 55.06, couponPct: 1.79 }, { province: "黑龙江省", bondShortName: "26黑龙江债20", term: "10Y", amountYi: 52.31, couponPct: 1.79 }, { province: "福建省", bondShortName: "26福建债21", term: "7Y", amountYi: 32.69, couponPct: 1.63 }, { province: "天津市", bondShortName: "26天津51", term: "5Y", amountYi: 27.60, couponPct: 1.50 }, { province: "黑龙江省", bondShortName: "26黑龙江债21", term: "5Y", amountYi: 19.99, couponPct: 1.50 }, { province: "天津市", bondShortName: "26天津41", term: "7Y", amountYi: 17.51, couponPct: 1.63 }, { province: "天津市", bondShortName: "26天津50", term: "10Y", amountYi: 13.15, couponPct: 1.83 }, { province: "天津市", bondShortName: "26天津42", term: "5Y", amountYi: 12.70, couponPct: 1.50 }, { province: "天津市", bondShortName: "26天津43", term: "7Y", amountYi: 4.80, couponPct: 1.63 }, { province: "天津市", bondShortName: "26天津49", term: "3Y", amountYi: 3.41, couponPct: 1.34 }, { province: "天津市", bondShortName: "26天津46", term: "20Y", amountYi: 2.00, couponPct: 2.30 }, { province: "天津市", bondShortName: "26天津44", term: "7Y", amountYi: 0.99, couponPct: 1.71 }, { province: "天津市", bondShortName: "26天津47", term: "30Y", amountYi: 0.80, couponPct: 2.44 }, { province: "天津市", bondShortName: "26天津45", term: "10Y", amountYi: 0.60, couponPct: 1.89 }, { province: "天津市", bondShortName: "26天津48", term: "30Y", amountYi: 0.30, couponPct: 2.42 }] },
+      "2026-07-09": { n: 7, amountYi: 22.3, bonds: [{ province: "新疆维吾尔自治区", bondShortName: "26新疆债34", term: "15Y", amountYi: 9.35, couponPct: 2.15 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债39", term: "20Y", amountYi: 3.45, couponPct: 2.38 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债37", term: "15Y", amountYi: 2.99, couponPct: 2.19 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债40", term: "20Y", amountYi: 2.90, couponPct: 2.38 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债38", term: "15Y", amountYi: 1.50, couponPct: 2.18 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债35", term: "10Y", amountYi: 1.47, couponPct: 1.79 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债36", term: "10Y", amountYi: 0.60, couponPct: 1.79 }] },
+      "2026-07-10": { n: 7, amountYi: 96.8, bonds: [{ province: "山西省", bondShortName: "26山西债41", term: "20Y", amountYi: 35.80, couponPct: 2.34 }, { province: "山西省", bondShortName: "26山西债07", term: "10Y", amountYi: 31.30, couponPct: 1.98 }, { province: "山西省", bondShortName: "26山西债42", term: "30Y", amountYi: 19.70, couponPct: 2.40 }, { province: "山西省", bondShortName: "26山西债40", term: "15Y", amountYi: 4.40, couponPct: 2.19 }, { province: "山西省", bondShortName: "26山西债39", term: "10Y", amountYi: 3.10, couponPct: 1.84 }, { province: "山西省", bondShortName: "26山西债38", term: "20Y", amountYi: 2.00, couponPct: 2.39 }, { province: "山西省", bondShortName: "26山西债37", term: "10Y", amountYi: 0.50, couponPct: 1.89 }] },
+      "2026-07-13": { n: 24, amountYi: 765.0, bonds: [{ province: "上海市", bondShortName: "26上海21", term: "10Y", amountYi: 131.00, couponPct: 1.79 }, { province: "湖北省", bondShortName: "26湖北债62", term: "15Y", amountYi: 100.00, couponPct: 2.15 }, { province: "甘肃省", bondShortName: "26甘肃债44", term: "20Y", amountYi: 89.36, couponPct: 2.38 }, { province: "甘肃省", bondShortName: "26甘肃债34", term: "10Y", amountYi: 74.84, couponPct: 1.79 }, { province: "甘肃省", bondShortName: "26甘肃债46", term: "10Y", amountYi: 65.00, couponPct: 1.79 }, { province: "甘肃省", bondShortName: "26甘肃债42", term: "20Y", amountYi: 48.04, couponPct: 2.38 }, { province: "湖北省", bondShortName: "26湖北债58", term: "20Y", amountYi: 44.62, couponPct: 2.34 }, { province: "上海市", bondShortName: "26上海18", term: "5Y", amountYi: 40.20, couponPct: 1.44 }, { province: "湖北省", bondShortName: "26湖北债59", term: "30Y", amountYi: 37.41, couponPct: 2.40 }, { province: "上海市", bondShortName: "26上海19", term: "10Y", amountYi: 34.12, couponPct: 1.79 }, { province: "甘肃省", bondShortName: "26甘肃债45", term: "20Y", amountYi: 32.69, couponPct: 2.38 }, { province: "甘肃省", bondShortName: "26甘肃债43", term: "20Y", amountYi: 12.71, couponPct: 2.38 }, { province: "甘肃省", bondShortName: "26甘肃债36", term: "20Y", amountYi: 10.84, couponPct: 2.39 }, { province: "湖北省", bondShortName: "26湖北债57", term: "15Y", amountYi: 7.35, couponPct: 2.19 }, { province: "湖北省", bondShortName: "26湖北债56", term: "10Y", amountYi: 7.30, couponPct: 1.79 }, { province: "湖北省", bondShortName: "26湖北债60", term: "30Y", amountYi: 6.77, couponPct: 2.40 }, { province: "湖北省", bondShortName: "26湖北债61", term: "7Y", amountYi: 6.70, couponPct: 1.62 }, { province: "上海市", bondShortName: "26上海20", term: "3Y", amountYi: 5.20, couponPct: 1.29 }, { province: "甘肃省", bondShortName: "26甘肃债37", term: "20Y", amountYi: 4.35, couponPct: 2.39 }, { province: "甘肃省", bondShortName: "26甘肃债39", term: "20Y", amountYi: 4.00, couponPct: 2.38 }, { province: "甘肃省", bondShortName: "26甘肃债38", term: "30Y", amountYi: 1.50, couponPct: 2.41 }, { province: "甘肃省", bondShortName: "26甘肃债40", term: "7Y", amountYi: 0.50, couponPct: 1.62 }, { province: "甘肃省", bondShortName: "26甘肃债35", term: "7Y", amountYi: 0.30, couponPct: 1.62 }, { province: "甘肃省", bondShortName: "26甘肃债41", term: "10Y", amountYi: 0.20, couponPct: 1.89 }] },
+      "2026-07-15": { n: 5, amountYi: 229.5, bonds: [{ province: "云南省", bondShortName: "26云南债27", term: "7Y", amountYi: 100.00, couponPct: 1.62 }, { province: "云南省", bondShortName: "26云南债28", term: "30Y", amountYi: 56.40, couponPct: 2.40 }, { province: "山东省", bondShortName: "26山东75", term: "15Y", amountYi: 42.01, couponPct: 2.15 }, { province: "山东省", bondShortName: "26山东76", term: "30Y", amountYi: 29.59, couponPct: 2.40 }, { province: "山东省", bondShortName: "26山东74", term: "10Y", amountYi: 1.54, couponPct: 1.79 }] },
+      "2026-07-16": { n: 2, amountYi: 63.3, bonds: [{ province: "湖南省", bondShortName: "26湖南债24", term: "7Y", amountYi: 36.46, couponPct: 1.62 }, { province: "湖南省", bondShortName: "26湖南债25", term: "7Y", amountYi: 26.82, couponPct: 1.62 }] },
+      "2026-07-17": { n: 6, amountYi: 285.1, bonds: [{ province: "吉林省", bondShortName: "26吉林债25", term: "30Y", amountYi: 144.00, couponPct: 2.40 }, { province: "河北省", bondShortName: "26河北债41", term: "5Y", amountYi: 65.52, couponPct: 1.49 }, { province: "吉林省", bondShortName: "26吉林债26", term: "5Y", amountYi: 44.81, couponPct: 1.49 }, { province: "吉林省", bondShortName: "26吉林债25", term: "10Y", amountYi: 23.62, couponPct: 1.84 }, { province: "河北省", bondShortName: "26河北债42", term: "5Y", amountYi: 4.16, couponPct: 1.49 }, { province: "吉林省", bondShortName: "26吉林债24", term: "10Y", amountYi: 3.00, couponPct: 1.83 }] },
+      "2026-07-21": { n: 7, amountYi: 511.1, bonds: [{ province: "四川省", bondShortName: "26四川债53", term: "30Y", amountYi: 204.50, couponPct: 2.39 }, { province: "四川省", bondShortName: "26四川债48", term: "5Y", amountYi: 160.52, couponPct: 1.50 }, { province: "四川省", bondShortName: "26四川债51", term: "10Y", amountYi: 57.97, couponPct: 1.79 }, { province: "四川省", bondShortName: "26四川债49", term: "7Y", amountYi: 52.56, couponPct: 1.62 }, { province: "四川省", bondShortName: "26四川债50", term: "10Y", amountYi: 15.63, couponPct: 1.79 }, { province: "四川省", bondShortName: "26四川债52", term: "10Y", amountYi: 12.00, couponPct: 1.79 }, { province: "陕西省", bondShortName: "26陕西债35", term: "7Y", amountYi: 7.89, couponPct: 1.62 }] },
+      "2026-07-22": { n: 10, amountYi: 715.5, bonds: [{ province: "浙江省", bondShortName: "26浙江53", term: "20Y", amountYi: 159.87, couponPct: 2.32 }, { province: "浙江省", bondShortName: "26浙江48", term: "10Y", amountYi: 152.52, couponPct: 1.79 }, { province: "浙江省", bondShortName: "26浙江49", term: "5Y", amountYi: 104.50, couponPct: 1.49 }, { province: "浙江省", bondShortName: "26浙江46", term: "3Y", amountYi: 90.78, couponPct: 1.34 }, { province: "浙江省", bondShortName: "26浙江54", term: "30Y", amountYi: 87.75, couponPct: 2.37 }, { province: "浙江省", bondShortName: "26浙江45", term: "10Y", amountYi: 70.61, couponPct: 1.79 }, { province: "浙江省", bondShortName: "26浙江47", term: "3Y", amountYi: 20.14, couponPct: 1.32 }, { province: "浙江省", bondShortName: "26浙江51", term: "20Y", amountYi: 13.03, couponPct: 2.32 }, { province: "浙江省", bondShortName: "26浙江50", term: "15Y", amountYi: 10.20, couponPct: 2.13 }, { province: "浙江省", bondShortName: "26浙江52", term: "30Y", amountYi: 6.05, couponPct: 2.37 }] },
+      "2026-07-23": { n: 27, amountYi: 501.8, bonds: [{ province: "安徽省", bondShortName: "26安徽70", term: "20Y", amountYi: 100.00, couponPct: 2.31 }, { province: "河南省", bondShortName: "26河南56", term: "30Y", amountYi: 62.41, couponPct: 2.36 }, { province: "安徽省", bondShortName: "26安徽69", term: "7Y", amountYi: 61.00, couponPct: 1.62 }, { province: "安徽省", bondShortName: "26安徽77", term: "20Y", amountYi: 58.13, couponPct: 2.31 }, { province: "安徽省", bondShortName: "26安徽65", term: "10Y", amountYi: 55.95, couponPct: 1.79 }, { province: "安徽省", bondShortName: "26安徽76", term: "15Y", amountYi: 26.05, couponPct: 2.13 }, { province: "安徽省", bondShortName: "26安徽78", term: "30Y", amountYi: 25.92, couponPct: 2.36 }, { province: "安徽省", bondShortName: "26安徽67", term: "7Y", amountYi: 17.84, couponPct: 1.62 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债42", term: "7Y", amountYi: 11.54, couponPct: 1.62 }, { province: "河南省", bondShortName: "26河南52", term: "5Y", amountYi: 11.19, couponPct: 1.49 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债41", term: "10Y", amountYi: 11.02, couponPct: 1.79 }, { province: "安徽省", bondShortName: "26安徽68", term: "10Y", amountYi: 8.45, couponPct: 1.79 }, { province: "安徽省", bondShortName: "26安徽66", term: "5Y", amountYi: 7.65, couponPct: 1.49 }, { province: "河南省", bondShortName: "26河南53", term: "7Y", amountYi: 6.31, couponPct: 1.62 }, { province: "河南省", bondShortName: "26河南54", term: "10Y", amountYi: 5.74, couponPct: 1.79 }, { province: "安徽省", bondShortName: "26安徽74", term: "7Y", amountYi: 5.27, couponPct: 1.62 }, { province: "河南省", bondShortName: "26河南55", term: "15Y", amountYi: 4.40, couponPct: 2.15 }, { province: "河南省", bondShortName: "26河南57", term: "30Y", amountYi: 4.32, couponPct: 2.36 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债44", term: "15Y", amountYi: 3.57, couponPct: 2.16 }, { province: "安徽省", bondShortName: "26安徽75", term: "10Y", amountYi: 2.92, couponPct: 1.79 }, { province: "安徽省", bondShortName: "26安徽73", term: "20Y", amountYi: 2.80, couponPct: 2.33 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债45", term: "20Y", amountYi: 2.34, couponPct: 2.34 }, { province: "安徽省", bondShortName: "26安徽72", term: "15Y", amountYi: 1.90, couponPct: 2.15 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债47", term: "7Y", amountYi: 1.86, couponPct: 1.62 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债43", term: "10Y", amountYi: 1.22, couponPct: 1.79 }, { province: "新疆维吾尔自治区", bondShortName: "26新疆债46", term: "30Y", amountYi: 1.00, couponPct: 2.39 }, { province: "安徽省", bondShortName: "26安徽71", term: "10Y", amountYi: 0.95, couponPct: 1.79 }] },
+      "2026-07-24": { n: 6, amountYi: 1127.7, bonds: [{ province: "江苏省", bondShortName: "26江苏债35", term: "5Y", amountYi: 350.07, couponPct: 1.48 }, { province: "江苏省", bondShortName: "26江苏债33", term: "30Y", amountYi: 300.00, couponPct: 2.35 }, { province: "江苏省", bondShortName: "26江苏债32", term: "15Y", amountYi: 297.00, couponPct: 2.08 }, { province: "江苏省", bondShortName: "26江苏债31", term: "10Y", amountYi: 109.00, couponPct: 1.79 }, { province: "江苏省", bondShortName: "26江苏债36", term: "20Y", amountYi: 55.66, couponPct: 2.26 }, { province: "江苏省", bondShortName: "26江苏债34", term: "10Y", amountYi: 16.01, couponPct: 1.79 }] },
+      "2026-07-27": { n: 2, amountYi: 361.6, bonds: [{ province: "湖南省", bondShortName: "26湖南债27", term: "7Y", amountYi: 350.00, couponPct: 1.62 }, { province: "湖南省", bondShortName: "26湖南债26", term: "7Y", amountYi: 11.60, couponPct: 1.62 }] }
+      },
+    };
+    // CALENDAR_DATA_END
+
+    const monthLabelEl = document.getElementById('calMonthLabel');
+    const gridEl = document.getElementById('calGrid');
+    const dayKeys = Object.keys(calendarData.days);
+    if (dayKeys.length === 0) {
+      monthLabelEl.textContent = '暂无已确认的发行结果数据';
+      gridEl.innerHTML = '';
+      document.getElementById('calDetailHead').textContent = '';
+      document.getElementById('calDetailTableBody').innerHTML = '';
+      return;
+    }
+
+    const maxAmt = Math.max(...dayKeys.map(k => calendarData.days[k].amountYi));
+    const [y, m] = calendarData.monthLabel.match(/(\d+)年(\d+)月/).slice(1).map(Number);
+    monthLabelEl.innerHTML = `${calendarData.monthLabel} <span class="num">已确认结果日历</span>（截至 <span class="num">${calendarData.asOf}</span>，之后日期为尚未公布/发生）`;
+
+    const firstWeekday = new Date(y, m - 1, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const weekdayLabels = ['日','一','二','三','四','五','六'];
+
+    let html = weekdayLabels.map(w => `<div class="cal-weekday">${w}</div>`).join('');
+    for (let i = 0; i < firstWeekday; i++) html += `<div class="cal-day empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const info = calendarData.days[dateStr];
+      if (info) {
+        const barW = Math.max(8, Math.round((info.amountYi / maxAmt) * 100));
+        html += `<div class="cal-day has-data" data-date="${dateStr}">
+          <div class="cal-day-num">${d}</div>
+          <div class="cal-day-chip"><b>${info.n}</b>只 · <b>${info.amountYi.toFixed(0)}</b>亿</div>
+          <div class="cal-day-bar" style="width:${barW}%"></div>
+        </div>`;
+      } else {
+        html += `<div class="cal-day"><div class="cal-day-num">${d}</div></div>`;
+      }
+    }
+    const totalCells = firstWeekday + daysInMonth;
+    const trailing = (7 - (totalCells % 7)) % 7;
+    for (let i = 0; i < trailing; i++) html += `<div class="cal-day empty"></div>`;
+    gridEl.innerHTML = html;
+
+    function selectDay(dateStr) {
+      gridEl.querySelectorAll('.cal-day.selected').forEach(el => el.classList.remove('selected'));
+      const cell = gridEl.querySelector(`.cal-day[data-date="${dateStr}"]`);
+      if (cell) cell.classList.add('selected');
+      const info = calendarData.days[dateStr];
+      const headEl = document.getElementById('calDetailHead');
+      const bodyEl = document.getElementById('calDetailTableBody');
+      if (!info) { headEl.textContent = ''; bodyEl.innerHTML = ''; return; }
+      headEl.innerHTML = `<b>${dateStr}</b> · 共 <b>${info.n}</b> 只债券，合计 <b>${info.amountYi.toFixed(2)}</b> 亿元`;
+      bodyEl.innerHTML = info.bonds.map(b => `<tr>
+        <td>${b.province}</td><td>${b.bondShortName}</td><td>${b.term}</td>
+        <td class="num" style="text-align:right">${b.amountYi !== null ? b.amountYi.toFixed(2) : '--'}</td>
+        <td class="num" style="text-align:right">${b.couponPct !== null ? b.couponPct.toFixed(2) : '--'}</td>
+      </tr>`).join('');
+    }
+
+    gridEl.querySelectorAll('.cal-day.has-data').forEach(cell => {
+      cell.addEventListener('click', () => selectDay(cell.dataset.date));
+    });
+    selectDay(dayKeys.sort().slice(-1)[0]);
   }
 
   // ---------------- Workday-gap histogram ----------------
@@ -2039,12 +2155,13 @@
 
   function drawAll() {
     drawCurve(); drawKeytermRate(); drawPremium(); drawKeytermCount();
-    drawMix(); drawCategory(); drawCategorySpreadYear(); drawRegion(); drawVolume();
+    drawMix(); drawRefiTrend(); drawRefiProvinceChart(); drawRegion(); drawVolume();
     drawTspreadRegion(); drawTspreadYear(); drawTspreadRegionYear();
     drawHist(); drawTermGap(); drawRegionGap(); drawWeekday(); drawMonth();
     drawRecentTerm(); drawRecentRegion();
     drawTermVolume(); drawTermVolumeYear();
     drawPlan();
+    drawPlanCalendar();
     fillOutlierTable();
   }
   drawAll();
