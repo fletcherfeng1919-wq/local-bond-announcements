@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-10，最新 commit `1fd0371`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-10，最新 commit `faf725c`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -52,7 +52,9 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 ## 3. 当前卡在哪 / 已知缺口
 
-**没有任何本次会话交办的任务处于阻塞状态**——用户要求的所有修改都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`1fd0371`）。
+**没有任何本次会话交办的任务处于阻塞状态**——用户要求的所有修改都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`faf725c`）。
+
+**但过程中发现了一个未修复的数据质量问题**（不是本次任务范围内的活，只是顺带查出来的）：`state_announcements.csv` 里存在若干"不同URL/不同批次公告，但金额可疑地完全相同"的情况——例如湖南省2026-08-04的第23批和第24批再融资公告（两个不同URL），提取出的金额都是同一组数字（170.00/42.53/180.00）；广西壮族自治区2026年8月三个不同批次（一般再融资、专项再融资批次一、批次二）金额也都是244.42。**没有去调查根因、也没有去 dedupe**——因为不确定是提取环节真的把两份PDF的表格数据串了（类似此前"发行结果"里遇到过的列错位/跨公告重复类问题），还是这些批次凑巧金额一致；贸然dedupe可能反而把真实的重复批次错误合并掉。如果以后有人要用 `state_announcements.csv` 做严肃的金额统计（不只是日历展示），建议先查一下 `src/extract_announcement.py` 的表格提取逻辑，重点看同一省份同月多个批次公告是否共享了同一张表。
 
 但这是一个跨很多轮会话的长期项目，历史上还遗留几个**从未闭环**的旧任务（来自更早期会话的 todo list，本次会话没有触碰，如果用户提起要记得）：
 
@@ -72,7 +74,7 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 2. **`datetime.date` 和 `pd.Timestamp` 比较会静默返回 `False`，不报错**：`pipeline.py::load_state()` 用 `.dt.date` 解析日期列，得到的是 object dtype 的纯 Python `datetime.date`，不是 `datetime64`。用 `df['some_date_col'] == pd.Timestamp(...)` 这种比较**永远是 False**，不会抛异常，非常隐蔽。`build_dashboard_plan.py` 第一版就因为这个 bug 导致 `refresh_plan_section()` 悄悄返回 `None`（看起来"运行成功但什么也没做"）。**修复方式**：凡是要拿这些日期列去和 `pd.Timestamp`/字符串日期比较，先 `df[col] = pd.to_datetime(df[col])` 转换一遍。
 
-3. **"发行安排"（计划）数据只有月度粒度，没有逐日拆分**——**不要为了做日历/时间图就把月度总额除以工作日数摊出"每日计划"**，那是编造数据。真正有逐日精度的是：`state_results.csv` 的 `issue_date`（已确认结果，但发布有滞后，当月初几乎没有数据）和 `state_announcements.csv` 的 `bid_date`（招标前公告，通常只提前约5个工作日才有，见下方坑9）。本次的发行日历组件用的是 `state_results.csv`，且在 UI 里明确注明这是"已确认口径"、和"计划"口径不是一回事——以后如果要做类似的"未来发行日历"，同样不能拿月度计划硬拆日，要么等真实的逐日数据出现，要么明确告诉用户"这是估算不是实际公告"。
+3. **"发行安排"（计划）数据只有月度粒度，没有逐日拆分**——**不要为了做日历/时间图就把月度总额除以工作日数摊出"每日计划"**，那是编造数据。真正有逐日精度的是：`state_results.csv` 的 `issue_date`（已确认结果，但发布有滞后，通常滞后约一周）和 `state_announcements.csv` 的 `bid_date`（招标前公告，通常只提前约5个工作日才有，见下方坑9）。**2026-08-10 更新**：发行日历组件现在两个都用——`issue_date` 填"已确认"的日子，`bid_date` 接着填"已公告未开标"的日子（补上确认结果滞后的那段空档），两者在 UI 上用实线/虚线+颜色明确区分，且"已公告"的债券 `couponPct` 永远是 `null`（利率还没定），千万不要因为"数据能凑出来"就给它编一个利率。这两个口径都不能覆盖到的日期（超出已公告范围的未来）就应该留空，不能再拿月度计划硬拆日去填——那还是编造数据。
 
 4. **两份 dashboard 文件必须手动保持同步，且顺序不能错**：编辑用的是 session 临时目录下的 scratchpad 副本（`/private/tmp/claude-501/.../scratchpad/artifact/bond_analysis.html`，**每个新会话这个路径都会变**，不是固定路径），仓库里的权威副本是 `output/bond_analysis_dashboard.html`。`src/build_dashboard_plan.py` 的两个 `refresh_*_section()` 函数**只会改 `output/` 里那份**（硬编码 `config.OUTPUT_DIR`）。正确顺序永远是：① 在 scratchpad 副本上改 HTML/JS → ② `cp` scratchpad→output → ③ 跑 Python 刷新脚本（改的是 output 那份）→ **④ 再 `cp` output→scratchpad 一次，把刷新后的数据拷回去** → ⑤ 用 scratchpad 路径发布 Artifact → ⑥ git commit output 那份。**本次会话真实踩过一次**：忘了第④步，把还没刷新（日历数据是空 `{}` 桩）的 scratchpad 版本发布成了 Artifact，靠 `diff` 两份文件才发现，之后才补做第④步重新发布。**每次发布前务必 `diff` 一下两份文件确认完全一致。**
 
@@ -100,5 +102,5 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `1fd0371` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `faf725c` |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |
