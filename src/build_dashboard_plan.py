@@ -147,24 +147,29 @@ CALENDAR_BLOCK_RE = re.compile(
 )
 
 
-def _calendar_month_slice(df: pd.DataFrame, period: pd.Timestamp, latest_confirmed: pd.Timestamp) -> dict | None:
-    """Build one month's calendar (day -> {n, amountYi, bonds}) from already
-    *confirmed* 发行结果 rows falling in [period, period+1month). Returns None
-    if that calendar month has zero confirmed issue_dates -- true for any
-    future month, and often true for the first ~1-2 weeks of the current
-    month too, since celma.org.cn's confirmed-results publishing lags actual
-    auctions. That lag is a real property of the data, not a bug: don't be
-    tempted to backfill it from 发行安排 (monthly-only, no day granularity)
-    or from 发行前公告 bid_date (a *scheduled* date, not a confirmed one) --
-    surfacing "no confirmed data yet" honestly is better than blending in a
-    different, less certain data type without saying so."""
+def _calendar_month_slice(result_df: pd.DataFrame, ann_df: pd.DataFrame, period: pd.Timestamp,
+                           latest_confirmed: pd.Timestamp) -> dict | None:
+    """Build one month's calendar (day -> {n, amountYi, bonds, status}) for
+    [period, period+1month). Two source types, never blended within a day:
+    - *confirmed* days come from 发行结果/state_results.csv (issue_date) --
+      settled auctions with a final coupon rate. Always wins if a date has
+      confirmed rows.
+    - *scheduled* days come from 发行前公告/state_announcements.csv (bid_date)
+      -- the auction date is real and already public, but the coupon isn't
+      set until the auction happens, so couponPct stays null and the day is
+      flagged status="scheduled" so the dashboard can render it distinctly
+      (and never imply a rate we don't have). Only fills in dates that have
+      no confirmed entry yet, so a day's status flips from scheduled to
+      confirmed automatically once results catch up -- never both at once.
+    Returns None if the month has neither confirmed nor scheduled rows at
+    all (true for any month far enough in the future that it hasn't been
+    announced yet). 发行安排 (monthly-only plan totals, no day field) is
+    deliberately never used here -- there's no date to place it on."""
     month_end = period + pd.offsets.MonthEnd(1)
-    month_df = df[(df["issue_date"] >= period) & (df["issue_date"] <= month_end)].copy()
-    if month_df.empty:
-        return None
-
     days = {}
-    for day, day_df in month_df.groupby(month_df["issue_date"].dt.strftime("%Y-%m-%d")):
+
+    month_results = result_df[(result_df["issue_date"] >= period) & (result_df["issue_date"] <= month_end)]
+    for day, day_df in month_results.groupby(month_results["issue_date"].dt.strftime("%Y-%m-%d")):
         bonds = [
             {
                 "province": r.province,
@@ -179,32 +184,74 @@ def _calendar_month_slice(df: pd.DataFrame, period: pd.Timestamp, latest_confirm
             "n": len(day_df),
             "amountYi": round(float(day_df["total_amount_yi"].sum()), 1),
             "bonds": bonds,
+            "status": "confirmed",
         }
 
+    scheduled_through = None
+    if ann_df is not None and not ann_df.empty:
+        month_ann = ann_df[(ann_df["bid_date"] >= period) & (ann_df["bid_date"] <= month_end)]
+        if not month_ann.empty:
+            scheduled_through = month_ann["bid_date"].max()
+        for day, day_df in month_ann.groupby(month_ann["bid_date"].dt.strftime("%Y-%m-%d")):
+            if day in days:
+                continue  # confirmed already covers this date; don't duplicate/downgrade it
+            bonds = [
+                {
+                    "province": r.province,
+                    "bondShortName": r.bond_name if pd.notna(r.bond_name) else "(简称待公布)",
+                    "term": r.term if pd.notna(r.term) else "--",
+                    "amountYi": round(float(r.total_amount_yi), 2) if pd.notna(r.total_amount_yi) else None,
+                    "couponPct": None,
+                }
+                for r in day_df.sort_values("total_amount_yi", ascending=False).itertuples()
+            ]
+            days[day] = {
+                "n": len(day_df),
+                "amountYi": round(float(day_df["total_amount_yi"].sum()), 1),
+                "bonds": bonds,
+                "status": "scheduled",
+            }
+
+    if not days:
+        return None
+
     # asOf is the same "latest confirmed issue_date across all data" for both
-    # months, not this month's own max -- a month that has zero rows so far
-    # still needs a truthful "as of" date to explain *why* it's empty (results
-    # haven't caught up to today yet), rather than reporting no date at all.
+    # months, not this month's own max -- a month that has zero confirmed
+    # rows so far still needs a truthful "as of" date to explain *why*
+    # (results haven't caught up to today yet), rather than reporting none.
     return {
         "monthLabel": f"{period.year}年{period.month}月",
-        "asOf": latest_confirmed.strftime("%Y-%m-%d"),
+        "asOf": latest_confirmed.strftime("%Y-%m-%d") if pd.notna(latest_confirmed) else None,
+        "scheduledThrough": scheduled_through.strftime("%Y-%m-%d") if scheduled_through is not None and pd.notna(scheduled_through) else None,
         "days": days,
     }
 
 
-def _build_calendar_data(result_df: pd.DataFrame):
+def _build_calendar_data(result_df: pd.DataFrame, announcement_df: pd.DataFrame | None = None):
     """Returns {"this": {...} | None, "next": {...} | None} for the current
-    and next calendar month's *confirmed* issuance (发行结果/state_results.csv,
-    issue_date), mirroring _build_plan_data's this/next-month shape. Returns
-    None overall only if there's no usable issue_date anywhere yet."""
+    and next calendar month, mirroring _build_plan_data's this/next-month
+    shape. Confirmed days (发行结果) always take priority; scheduled days
+    (发行前公告 bid_date) fill in dates confirmed data hasn't reached yet.
+    Returns None overall only if there's no usable date in either source."""
     df = result_df.dropna(subset=["issue_date"]).copy()
-    if df.empty:
+    ann = None
+    if announcement_df is not None:
+        ann = announcement_df.dropna(subset=["bid_date"]).copy()
+        if not ann.empty:
+            ann["bid_date"] = pd.to_datetime(ann["bid_date"])
+            ann["total_amount_yi"] = ann["total_amount_yi"].fillna(0.0)
+
+    if df.empty and (ann is None or ann.empty):
         return None
-    df["issue_date"] = pd.to_datetime(df["issue_date"])
-    latest_confirmed = df["issue_date"].max()
+    if not df.empty:
+        df["issue_date"] = pd.to_datetime(df["issue_date"])
+        latest_confirmed = df["issue_date"].max()
+    else:
+        latest_confirmed = pd.NaT
+
     this_month, next_month = _current_and_next_month()
-    this_data = _calendar_month_slice(df, this_month, latest_confirmed)
-    next_data = _calendar_month_slice(df, next_month, latest_confirmed)
+    this_data = _calendar_month_slice(df, ann, this_month, latest_confirmed)
+    next_data = _calendar_month_slice(df, ann, next_month, latest_confirmed)
     if this_data is None and next_data is None:
         return None
     return {"this": this_data, "next": next_data}
@@ -225,11 +272,16 @@ def _calendar_js_null_or(month: dict | None) -> str:
     day_entries = []
     for day, d in sorted(month["days"].items()):
         bond_lines = ", ".join(_js_bond(b) for b in d["bonds"])
-        day_entries.append(f'        {_js_string(day)}: {{ n: {d["n"]}, amountYi: {d["amountYi"]}, bonds: [{bond_lines}] }}')
+        day_entries.append(
+            f'        {_js_string(day)}: {{ n: {d["n"]}, amountYi: {d["amountYi"]}, '
+            f'status: {_js_string(d["status"])}, bonds: [{bond_lines}] }}'
+        )
     days_js = ",\n".join(day_entries)
+    as_of_js = _js_string(month["asOf"]) if month["asOf"] else "null"
+    sched_js = _js_string(month["scheduledThrough"]) if month["scheduledThrough"] else "null"
     return (
         "{\n"
-        f"      monthLabel: {_js_string(month['monthLabel'])}, asOf: {_js_string(month['asOf'])},\n"
+        f"      monthLabel: {_js_string(month['monthLabel'])}, asOf: {as_of_js}, scheduledThrough: {sched_js},\n"
         f"      days: {{\n{days_js}\n      }},\n"
         "    }"
     )
@@ -244,13 +296,16 @@ def _render_calendar_js_block(built: dict) -> str:
     )
 
 
-def refresh_calendar_section(result_df: pd.DataFrame, dashboard_path=DASHBOARD_PATH) -> str | None:
-    """Regenerate the embedded calendarData block (confirmed daily issuance
-    calendar) inside the dashboard HTML. Same no-op-on-failure contract as
-    refresh_plan_section."""
+def refresh_calendar_section(result_df: pd.DataFrame, announcement_df: pd.DataFrame | None = None,
+                              dashboard_path=DASHBOARD_PATH) -> str | None:
+    """Regenerate the embedded calendarData block (issuance calendar) inside
+    the dashboard HTML. Confirmed days come from result_df; if announcement_df
+    is passed, near-future scheduled-but-not-yet-confirmed days (from 发行前
+    公告 bid_date) fill in the gap between the last confirmed date and today.
+    Same no-op-on-failure contract as refresh_plan_section."""
     if not dashboard_path.exists():
         return None
-    built = _build_calendar_data(result_df)
+    built = _build_calendar_data(result_df, announcement_df)
     if built is None:
         return None
 
@@ -265,7 +320,12 @@ def refresh_calendar_section(result_df: pd.DataFrame, dashboard_path=DASHBOARD_P
     parts = []
     for key in ("this", "next"):
         m = built[key]
-        parts.append(f"{m['monthLabel']} {len(m['days'])}天有数据" if m else "无已确认数据")
+        if not m:
+            parts.append("无数据")
+            continue
+        n_confirmed = sum(1 for d in m["days"].values() if d["status"] == "confirmed")
+        n_scheduled = sum(1 for d in m["days"].values() if d["status"] == "scheduled")
+        parts.append(f"{m['monthLabel']} 已确认{n_confirmed}天/已公告{n_scheduled}天")
     return " | ".join(parts)
 
 

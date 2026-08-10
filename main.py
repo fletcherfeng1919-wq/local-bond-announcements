@@ -47,7 +47,7 @@ def main():
     report_path.write_text(report_text, encoding="utf-8")
 
     plan_status = refresh_plan_section(plan_df)
-    calendar_status = refresh_calendar_section(result_df)
+    calendar_status = refresh_calendar_section(result_df, ann_df)
 
     print(
         f"完成。输出文件：\n"
