@@ -41,11 +41,17 @@ mismatches.
 - "html": the bond blocks are inline in the cover page's own HTML, no
   attachment at all. Cleanest and most reliable source (confirmed: 宁夏,
   宁波) -- no OCR risk.
-- "docx" (湖南) / "image" (天津): confirmed to exist but NOT implemented --
-  docx needs the `python-docx` package (not currently a project dependency)
-  and 天津's announcements are JPG scans requiring the same OCR path as a
-  scanned PDF. Calling verify_announcement() for these raises
-  NotImplementedError rather than silently returning nothing.
+- "docx" (湖南): attachment is a Word doc containing an actual table (same
+  field vocabulary as pdf/html, just already structured into cells) --
+  parsed via parse_docx_table() using python-docx (now a project
+  dependency, see requirements.txt). czt.hunan.gov.cn's TLS handshake also
+  fails on this machine's OpenSSL (`BAD_ECPOINT`) via requests/urllib3;
+  _fetch_html()/_fetch_bytes() fall back to a `curl` subprocess for it.
+- "image" (天津): announcements are JPG scans, would need the same
+  fitz+pytesseract OCR path pdf_extract.py uses for scanned PDFs, just
+  applied to a standalone image instead of a PDF page. NOT IMPLEMENTED --
+  calling verify_announcement() for it raises NotImplementedError rather
+  than silently returning nothing.
 - 重庆 (Chongqing): cover URL confirmed real but WebFetch couldn't extract
   a body during research -- structure genuinely unconfirmed, not just
   unimplemented. Don't assume "pdf" or "html" for it without checking.
@@ -58,7 +64,7 @@ province-own results page at all, not just unfound). Only the provinces in
 PROVINCE_SOURCES below are wired up; extend it when/if the user asks.
 """
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from . import http_client, pdf_extract
 
@@ -126,13 +132,28 @@ PROVINCE_SOURCES: dict[str, ProvinceSource] = {
     "湖南省": ProvinceSource(
         "湖南省", "czt.hunan.gov.cn", "docx",
         "https://czt.hunan.gov.cn/czt/dzqzfzjxx/202606/t20260625_34011506.html",
-        notes="Attachment is .docx, not .pdf. NOT IMPLEMENTED -- needs `pip install python-docx`.",
+        notes="Attachment is .docx, not .pdf -- but its content is an actual Word TABLE "
+              "(债券名称/计划发行规模（亿元）/实际发行规模（亿元）/发行期限（年）/票面利率/...), "
+              "cleaner than the regex-over-flattened-text path used for pdf/html since there's no "
+              "block-splitting risk at all. czt.hunan.gov.cn's TLS handshake fails on this machine's "
+              "OpenSSL (BAD_ECPOINT) via `requests`/urllib3 even though `curl` connects fine to the "
+              "same URL -- _fetch_bytes() falls back to a `curl` subprocess on SSLError.",
     ),
     "重庆市": ProvinceSource(
-        "重庆市", "czj.cq.gov.cn", "unknown",
+        "重庆市", "czj.cq.gov.cn", "pdf",
         "https://czj.cq.gov.cn/zwgk_268/zfxxgkml/dfzfzw/202607/t20260729_15868828.html",
-        notes="Cover URL real (6+ 2026 batches listed at this column) but WebFetch returned only "
-              "metadata during research, not body/attachment -- structure genuinely unconfirmed.",
+        notes="Structure confirmed 2026-08-11 via direct fetch (WebFetch had failed to surface the "
+              "PDF link during research -- a direct requests.get()+regex found it fine, same "
+              "P0<id>.pdf naming convention used by several other 政府信息公开 CMS instances). "
+              "LOW YIELD in practice: this is a fully scanned PDF (no text layer, extract_pdf() "
+              "always falls back to OCR) and its layout groups all field LABELS together before "
+              "all their VALUES per bond (not the label-immediately-followed-by-value adjacency "
+              "every other confirmed source uses), which the current regex parser doesn't handle -- "
+              "tested against the real 6-bond 2026-07-29 batch and got 0 usable rows (most fields "
+              "None, one row correctly caught by the low_confidence safety net). Safe (no false "
+              "matches/mismatches were produced) but not currently useful for 重庆 specifically; "
+              "would need a positional label/value pairing strategy instead of adjacency regex to "
+              "improve, not attempted -- low ROI given how poor the source OCR itself is.",
     ),
 }
 
@@ -140,9 +161,18 @@ _BOND_BLOCK_RE = re.compile(r"债券名称")
 _NAME_RE = re.compile(r"^(.+?)计划发行规模")
 _AMOUNT_RE = re.compile(r"实际发行规模([\d.]+)亿元")
 _PLANNED_AMOUNT_RE = re.compile(r"计划发行规模([\d.]+)亿元")
+# 宁波 confirmed (2026-08-11) to state amounts in 万元 (10k yuan), not 亿元
+# like every other confirmed province -- e.g. "110000万元" == 11亿元. Only
+# tried when the 亿元 patterns above miss, and converted by /10000.
+_AMOUNT_WAN_RE = re.compile(r"实际发行规模([\d.]+)万元")
+_PLANNED_AMOUNT_WAN_RE = re.compile(r"计划发行规模([\d.]+)万元")
 _TERM_RE = re.compile(r"发行期限(\d+)年")
 _RATE_RE = re.compile(r"票面利率([\d.]+)%")
 _ISSUE_DATE_RE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日已完成招标")
+# 宁波 confirmed (2026-08-11) to never use the "已完成招标" phrasing at all
+# -- the bid date only appears in the announcement's own title, e.g.
+# "2025年5月23日宁波市政府债券发行结果公告". Tried as a fallback only.
+_TITLE_DATE_RE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日\S{0,4}(?:政府债券|地方政府债)发行结果公告")
 # Some provinces' templates (confirmed: 新疆) also carry 债券简称 -- when
 # present it's a far more reliable join key than (province,date,term), so
 # capture it opportunistically. OCR is confirmed (新疆 sample) to misread
@@ -191,7 +221,7 @@ def parse_announcement_text(raw_text: str, province: str) -> list[dict]:
     mismatch by diff_against_state -- always inspect `warnings` first."""
     text = re.sub(r"\s+", "", raw_text).replace("|", "")
 
-    date_m = _ISSUE_DATE_RE.search(text)
+    date_m = _ISSUE_DATE_RE.search(text) or _TITLE_DATE_RE.search(text)
     issue_date = f"{date_m.group(1)}-{int(date_m.group(2)):02d}-{int(date_m.group(3)):02d}" if date_m else None
 
     blocks = _BOND_BLOCK_RE.split(text)[1:]
@@ -202,6 +232,11 @@ def parse_announcement_text(raw_text: str, province: str) -> list[dict]:
     for b in blocks:
         name_m = _NAME_RE.match(b)
         amt_m = _AMOUNT_RE.search(b) or _PLANNED_AMOUNT_RE.search(b)
+        amt_yi = float(amt_m.group(1)) if amt_m else None
+        if amt_yi is None:
+            wan_m = _AMOUNT_WAN_RE.search(b) or _PLANNED_AMOUNT_WAN_RE.search(b)
+            if wan_m:
+                amt_yi = round(float(wan_m.group(1)) / 10000, 4)
         term_m = _TERM_RE.search(b)
         rate_m = _RATE_RE.search(b)
         shortname_m = _SHORTNAME_RE.search(b)
@@ -214,7 +249,7 @@ def parse_announcement_text(raw_text: str, province: str) -> list[dict]:
             "province": province,
             "bond_name": bond_name,
             "bond_short_name": shortname_m.group(1) if shortname_m else None,
-            "total_amount_yi": float(amt_m.group(1)) if amt_m else None,
+            "total_amount_yi": amt_yi,
             "term": f"{term_m.group(1)}Y" if term_m else None,
             "coupon_rate_pct": float(rate_m.group(1)) if rate_m else None,
             "issue_date": issue_date,
@@ -235,8 +270,8 @@ def parse_announcement_text(raw_text: str, province: str) -> list[dict]:
     return rows
 
 
-def _find_pdf_link(cover_html: str, base_url: str) -> str | None:
-    m = re.search(r'href="([^"]+\.pdf)"', cover_html, re.I)
+def _find_attachment_link(cover_html: str, base_url: str, ext: str) -> str | None:
+    m = re.search(rf'href="([^"]+\.{ext})"', cover_html, re.I)
     if not m:
         return None
     href = m.group(1)
@@ -244,6 +279,140 @@ def _find_pdf_link(cover_html: str, base_url: str) -> str | None:
         return href
     from urllib.parse import urljoin
     return urljoin(base_url, href)
+
+
+def _find_pdf_link(cover_html: str, base_url: str) -> str | None:
+    return _find_attachment_link(cover_html, base_url, "pdf")
+
+
+def _find_docx_link(cover_html: str, base_url: str) -> str | None:
+    return _find_attachment_link(cover_html, base_url, "docx?")
+
+
+def _fetch_bytes(url: str) -> bytes:
+    """Like http_client.fetch_pdf() but for arbitrary binary attachments
+    (currently just .docx), with a `curl` subprocess fallback. Confirmed
+    (2026-08-11, czt.hunan.gov.cn) some .gov.cn TLS stacks trip this
+    machine's OpenSSL 3.6.3 with a hard `[SSL: BAD_ECPOINT]` during the
+    ECDHE handshake -- reproducible every time via `requests`/urllib3 and
+    even bare `openssl s_client`, yet `curl` connects to the identical URL
+    without issue (same class of incompatibility as the chinamoney.org.cn
+    legacy-renegotiation problem found earlier this project -- different
+    root cause, same "this machine's OpenSSL build vs. this server"
+    shape). Not cached on disk like fetch_pdf()/extract_pdf() -- .docx
+    announcements are infrequent enough that re-fetching each call is fine."""
+    import requests
+    headers = {"User-Agent": _config().USER_AGENT}
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        return resp.content
+    except requests.exceptions.SSLError:
+        import subprocess
+        result = subprocess.run(
+            ["curl", "-sL", "-A", headers["User-Agent"], url],
+            capture_output=True, timeout=45, check=True,
+        )
+        return result.stdout
+
+
+def _config():
+    from . import config
+    return config
+
+
+def _fetch_html(url: str, use_cache: bool = True) -> str:
+    """Like http_client.fetch() but with the same curl fallback as
+    _fetch_bytes() for the BAD_ECPOINT TLS failure -- needed because the
+    cover-page HTML fetch hits the same affected hosts (confirmed:
+    czt.hunan.gov.cn) as the .docx attachment fetch, not just the
+    attachment step. Manually writes into http_client's own on-disk cache
+    on the curl-fallback path too (http_client.fetch() itself never gets
+    that far, since it raises before its own cache-write line runs) --
+    without this, every call to an SSL-affected host reshells out to curl,
+    which is slow enough (confirmed: occasionally exceeds a 30s timeout)
+    that repeated calls in one session are worth avoiding."""
+    try:
+        return http_client.fetch(url, use_cache=use_cache)
+    except RuntimeError as e:
+        if "BAD_ECPOINT" not in str(e) and "SSLError" not in str(e):
+            raise
+        text = _fetch_bytes(url).decode("utf-8", errors="ignore")
+        if use_cache:
+            cache_file = http_client._cache_path(url, _config().RAW_HTML_DIR, ".html")
+            try:
+                cache_file.write_text(text, encoding="utf-8")
+            except OSError:
+                pass
+        return text
+
+
+def parse_docx_table(docx_bytes: bytes, province: str) -> list[dict]:
+    """Parse a provincial 发行结果公告 .docx attachment. Confirmed (湖南,
+    2026-06-25) these carry the same standardized field vocabulary as the
+    pdf/html sources, but as an actual Word table -- read directly via
+    column-header matching (same spirit as extract_result.py's
+    _find_table_columns, simpler here since docx tables don't have the
+    OCR/PDF layout-collapse failure modes that module was built around)."""
+    import io
+    import docx
+
+    doc = docx.Document(io.BytesIO(docx_bytes))
+
+    issue_date = None
+    for p in doc.paragraphs:
+        m = _ISSUE_DATE_RE.search(p.text.replace(" ", ""))
+        if m:
+            issue_date = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+            break
+
+    field_map = {
+        "债券名称": "bond_name", "实际发行规模": "total_amount_yi",
+        "发行期限": "term", "票面利率": "coupon_rate_pct",
+    }
+
+    rows = []
+    for table in doc.tables:
+        if not table.rows:
+            continue
+        header = [c.text.strip() for c in table.rows[0].cells]
+        col_idx = {}
+        for i, h in enumerate(header):
+            for cn_key, field_name in field_map.items():
+                if cn_key in h and field_name not in col_idx.values():
+                    col_idx[i] = field_name
+        if "bond_name" not in col_idx.values():
+            continue
+        for row in table.rows[1:]:
+            cells = [c.text.strip() for c in row.cells]
+            if not any(cells):
+                continue
+            values = {}
+            for i, field_name in col_idx.items():
+                if i >= len(cells):
+                    continue
+                raw = cells[i]
+                if field_name == "total_amount_yi":
+                    m = re.search(r"[\d.]+", raw)
+                    values[field_name] = float(m.group(0)) if m else None
+                elif field_name == "term":
+                    m = re.search(r"\d+", raw)
+                    values[field_name] = f"{m.group(0)}Y" if m else None
+                elif field_name == "coupon_rate_pct":
+                    m = re.search(r"[\d.]+", raw)
+                    values[field_name] = float(m.group(0)) if m else None
+                else:
+                    values[field_name] = raw or None
+            rows.append({
+                "province": province,
+                "bond_name": values.get("bond_name"),
+                "bond_short_name": None,
+                "total_amount_yi": values.get("total_amount_yi"),
+                "term": values.get("term"),
+                "coupon_rate_pct": values.get("coupon_rate_pct"),
+                "issue_date": issue_date,
+            })
+    return rows
 
 
 def verify_announcement(province: str, url: str, use_cache: bool = True) -> list[dict]:
@@ -256,12 +425,12 @@ def verify_announcement(province: str, url: str, use_cache: bool = True) -> list
     structure = src.structure if src else None
 
     if structure == "html":
-        html = http_client.fetch(url, use_cache=use_cache)
+        html = _fetch_html(url, use_cache=use_cache)
         text = _strip_html_to_text(html)
         return parse_announcement_text(text, province)
 
     if structure == "pdf":
-        cover_html = http_client.fetch(url, use_cache=use_cache)
+        cover_html = _fetch_html(url, use_cache=use_cache)
         pdf_url = _find_pdf_link(cover_html, url)
         if not pdf_url:
             raise RuntimeError(f"no PDF link found on cover page {url}")
@@ -272,6 +441,14 @@ def verify_announcement(province: str, url: str, use_cache: bool = True) -> list
             for r in rows:
                 r["extraction_method"] = "ocr"
         return rows
+
+    if structure == "docx":
+        cover_html = _fetch_html(url, use_cache=use_cache)
+        docx_url = _find_docx_link(cover_html, url)
+        if not docx_url:
+            raise RuntimeError(f"no .docx link found on cover page {url}")
+        docx_bytes = _fetch_bytes(docx_url)
+        return parse_docx_table(docx_bytes, province)
 
     raise NotImplementedError(
         f"structure '{structure}' for {province} is not implemented "
