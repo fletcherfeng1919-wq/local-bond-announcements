@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-11，最新 commit `9c31bc9`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-11，最新 commit `d8bedd3`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -80,7 +80,7 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 ## 3. 当前卡在哪 / 已知缺口
 
-**没有任何本次会话交办的任务处于阻塞状态**——用户要求的所有修改都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`9c31bc9`）。
+Wind核对+全量图表重算这两件事都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`d8bedd3`）。**唯一未完成的是省级财政厅交叉验证模块**（见上方"当前真正待办"小节）——已经做完调研（27省搜索结果），代码还没写，不算阻塞，只是还没开工。
 
 **但有一件重要的、只完成了一半的事，下一个会话大概率会被继续问到**：用户提供了一份Wind终端导出的"地方政府债一级市场"报表（覆盖2025-08-11~2026-08-10，2487条已确认债券），说这是最准的数据源，让核对我们自己的 `state_results.csv` 有没有缺口。核对结果发现了**三个真实的、系统性的提取bug**（不是孤立的8月问题，全年都有）：
 1. **多子档合并求和bug**：91支债券的 `total_amount_yi` 偏低——根因是同一 `bond_code` 在celma PDF表格里会拆成2-3行（比如一支专项债同时对应"项目收益/棚改/土地储备"三个子用途），`pipeline.py` 按 `bond_code` 去重时用 `keep="last"` 只留最后一行，其余子档金额被静默丢弃，而不是求和。
@@ -149,5 +149,5 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `9c31bc9` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `d8bedd3` |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |
