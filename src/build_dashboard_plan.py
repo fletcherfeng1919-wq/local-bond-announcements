@@ -157,12 +157,20 @@ def _calendar_month_slice(result_df: pd.DataFrame, ann_df: pd.DataFrame, period:
       confirmed rows.
     - *listed* days come from SSE's 上市公告 feed (src/sse_listing.py),
       keyed by the listing notice's own publish date -- a DIFFERENT date
-      concept than issue_date/bid_date (it's when the bond starts trading,
-      typically a couple days after auction, not the auction day itself).
+      concept than issue_date/bid_date. Empirically confirmed (2026-08-11):
+      all 16 notices SSE published on 08-11 corresponded to bonds Wind
+      showed as auctioned on 08-10 -- i.e. the notice publish date runs
+      about T+1 versus the actual auction date, not same-day. Don't treat
+      sseDate as the auction date, and don't "fix" this by subtracting a
+      day either -- one day's sample isn't enough to promote a guess into
+      a rule, and it would just trade one wrong assumption for another.
       Confirms the bond was successfully issued, but the notice itself
       carries no coupon rate, so couponPct stays null and status is
-      "listed" ("已上市，利率待补"). Same-day-or-next-day faster than
-      celma's confirmed results, so it's the second priority.
+      "listed" ("已上市，利率待补"). Faster than celma's confirmed results
+      (which lag actual auctions by about a week), so second priority --
+      but comparing this layer's calendar day against Wind/other terminals'
+      "auction date" columns day-by-day will look off by ~1 day; that's a
+      date-concept mismatch, not a data error.
     - *scheduled* days come from 发行前公告/state_announcements.csv (bid_date)
       -- the auction date is real and already public, but the coupon isn't
       set until the auction happens, so couponPct stays null and the day is
