@@ -81,7 +81,14 @@ def _row_get(row: list, idx: dict, key: str) -> str | None:
     if i is None or i >= len(row):
         return None
     v = row[i]
-    return v.replace("\n", "") if isinstance(v, str) else v
+    # Some provinces' PDF templates (甘肃/青海/四川/海南/黑龙江 confirmed) render
+    # table cell text with stray internal spaces (e.g. "25 甘肃债 28" instead of
+    # "25甘肃债28") -- _find_table_columns already strips spaces when matching
+    # headers, but this value-extraction path didn't, so bond_short_name came
+    # out looking like a different bond entirely and silently evaded every
+    # exact-match dedup/lookup keyed on it. Numeric fields already get this via
+    # _to_float's own whitespace handling; this is the string-field equivalent.
+    return v.replace("\n", "").replace(" ", "") if isinstance(v, str) else v
 
 
 def extract_result_fields(title, pub_date, url, source_name, doc_type, pdf_result: dict) -> list[dict]:
