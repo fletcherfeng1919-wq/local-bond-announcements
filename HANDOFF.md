@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-10，最新 commit `faf725c`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-11，最新 commit `6fb53fa`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -50,9 +50,20 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 **2026-08-10 追加的一轮修改**（commit `1fd0371`）：用户反馈发行日历一直停在7月，要求补上8月并且以后固定显示"本月+下月"。排查发现是坑1（列表页缓存）又犯了一次——`state_results.csv` 的确认结果实际已经更新到了 8-07，只是没重新抓取。处理过程：① 用 `use_cache=False` 重新抓取三个渠道里滞后的一个（`fxjg`/发行结果），拿到8月前7天的确认数据；② 把 `_build_calendar_data()` 从"取最新一个有数据的月份"改成了和 `_build_plan_data()` 完全一样的"本月/下月"结构（新增 `_calendar_month_slice()`，复用已有的 `_current_and_next_month()`）；③ 日历 HTML/JS 从单日历拆成本月/下月两个并排的 `chart-card`（`drawPlanCalendar()` 重构成 `renderCalendarMonth(month, ids)` 参数化调用两次，和 `renderProvinceMonth()`是同一个模式）。**这条修改印证了坑1不是一次性踩完就完事的——凡是"数据感觉滞后/停更"的报告，先怀疑列表页缓存，这次依然是同一个原因。**
 
+**2026-08-11 追加的一轮修改**（commit `6fb53fa`）：用户拿 Wind 终端截图对比，指出即使补了8月数据，我们的"已确认"覆盖范围（当时到8-07）还是比 Wind 差一大截——Wind 对8-10的招标已经有确认利率了。查证后确认这**不是抓取问题**：直接绕过缓存重新抓 celma 的"发行结果"栏目，最新还是只到8-07——celma 平台自己的确认结果公告本身相对实际招标就有约1周的发布滞后，这是数据源结构性的，不是我们抓取的问题。
+
+为了缩小这个滞后，找到并接入了一个新的数据源——**上交所（SSE）债券信息网的"上市公告"**：
+- 真实接口是 `https://query.sse.com.cn/commonSoaQuery.do`，关键参数 `sqlId=BS_ZQ_GGLL&bondType=LOCAL_GOVERNMENT_BOND_BULLETIN`（不是网上能查到的 `commonQuery.do`，是猜不出来的，只能靠抓真实请求）。这个接口的数据是**当天**的（请求当天就能看到当天发布的上市公告）。
+- **重要限制**：这个"上市公告"类型的PDF本身**不含票面利率**——原文明确写"本期债券其他具体要素内容见发行公告及相关发行文件"，把利率细节推给了另一份文件。所以这个数据源只能确认"债券已经成功发行、开始交易了"，确认不了利率是多少。**不要试图从这个PDF里解析利率，没有**。
+- 因此日历现在是**三态**：已确认（`state_results.csv`，有利率）→ 已上市/利率待补（新的SSE数据源，没利率但比celma快）→ 已公告待开标（`state_announcements.csv` 的 bid_date，招标前）。三者按这个优先级填格子，同一天不会重复。
+- 新建了 `src/sse_listing.py`：`fetch_recent_listing_notices(date_start, date_end)`，纯 `requests.get`（不需要登录/不需要浏览器，直接调这个URL就行），**不落盘存CSV**——因为这份数据只对"当下"有意义，不是要长期归档的历史数据，每次跑 `main.py` 现查现用。
+- **接口是怎么找到的，供以后同类需求参考**：这类新式政府/交易所网站前端是JS单页应用，数据靠后台JSON接口异步加载，页面源码里看不到接口地址，纯靠 requests/curl 猜参数基本猜不中（试过 `commonQuery.do` 全部404/报错）。最后是装了 **Playwright**（`.venv/bin/pip install playwright && .venv/bin/playwright install chromium`，浏览器装在项目 venv 里，不影响系统），写了个脚本（`capture_sse_api.py`，未保留在仓库里，是临时脚本）跑一个真实的无头浏览器打开目标页面、监听所有 `response` 事件里 `content-type` 带 `json` 的请求，把真实调用的 URL 印出来——这样不到几分钟就找到了真接口，比瞎猜参数靠谱得多。**以后遇到类似"这个网站数据要API直连，但接口没文档"的需求，直接复用这个 Playwright 网络抓包思路**，不要再手动猜 sqlId 之类的参数。
+- 顺带排除了两条走不通的路，别再浪费时间重复尝试：`chinamoney.org.cn`（中国货币网新域名）服务器的TLS配置太老，触发"unsafe legacy renegotiation disabled"，`curl`和Python `requests`（哪怕手动开`ssl.OP_LEGACY_SERVER_CONNECT`）都连不上，这是这台机器的OpenSSL版本（3.6.3）和对方服务器双方协议不兼容，不是请求方式的问题。`chinamoney.com.cn`（老域名）有一套"IP注册"反爬机制（跟着 AKShare 源码里 `bond_china_money.py` 的 `__bond_register_service()` 三步握手能注册成功），但注册后 AKShare 用的实际取数接口 `ags/ms/cm-u-bond-an/bnBondEmit` 现在返回 `404 Path not found`——网站后端已经改版，那个接口失效了。
+- 期间用户还提过一个第三方工具 **OpenCLI**（`github.com/jackwener/OpenCLI`，号称能把网页/浏览器会话转成CLI命令），调研后发现要装 Node.js（这台机器没有）+ npm全局装第三方包，且它真正的"浏览器会话"能力依赖一个我装不进用户真实浏览器的Chrome扩展——用户权衡后选择了用 Playwright（不需要系统级新运行时，包在项目 venv 里）而不是 OpenCLI，**没有实际安装或使用 OpenCLI**，如果以后又提起这个工具，是没有装过的状态。
+
 ## 3. 当前卡在哪 / 已知缺口
 
-**没有任何本次会话交办的任务处于阻塞状态**——用户要求的所有修改都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`faf725c`）。
+**没有任何本次会话交办的任务处于阻塞状态**——用户要求的所有修改都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`6fb53fa`）。
 
 **但过程中发现了一个未修复的数据质量问题**（不是本次任务范围内的活，只是顺带查出来的）：`state_announcements.csv` 里存在若干"不同URL/不同批次公告，但金额可疑地完全相同"的情况——例如湖南省2026-08-04的第23批和第24批再融资公告（两个不同URL），提取出的金额都是同一组数字（170.00/42.53/180.00）；广西壮族自治区2026年8月三个不同批次（一般再融资、专项再融资批次一、批次二）金额也都是244.42。**没有去调查根因、也没有去 dedupe**——因为不确定是提取环节真的把两份PDF的表格数据串了（类似此前"发行结果"里遇到过的列错位/跨公告重复类问题），还是这些批次凑巧金额一致；贸然dedupe可能反而把真实的重复批次错误合并掉。如果以后有人要用 `state_announcements.csv` 做严肃的金额统计（不只是日历展示），建议先查一下 `src/extract_announcement.py` 的表格提取逻辑，重点看同一省份同月多个批次公告是否共享了同一张表。
 
@@ -74,7 +85,7 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 2. **`datetime.date` 和 `pd.Timestamp` 比较会静默返回 `False`，不报错**：`pipeline.py::load_state()` 用 `.dt.date` 解析日期列，得到的是 object dtype 的纯 Python `datetime.date`，不是 `datetime64`。用 `df['some_date_col'] == pd.Timestamp(...)` 这种比较**永远是 False**，不会抛异常，非常隐蔽。`build_dashboard_plan.py` 第一版就因为这个 bug 导致 `refresh_plan_section()` 悄悄返回 `None`（看起来"运行成功但什么也没做"）。**修复方式**：凡是要拿这些日期列去和 `pd.Timestamp`/字符串日期比较，先 `df[col] = pd.to_datetime(df[col])` 转换一遍。
 
-3. **"发行安排"（计划）数据只有月度粒度，没有逐日拆分**——**不要为了做日历/时间图就把月度总额除以工作日数摊出"每日计划"**，那是编造数据。真正有逐日精度的是：`state_results.csv` 的 `issue_date`（已确认结果，但发布有滞后，通常滞后约一周）和 `state_announcements.csv` 的 `bid_date`（招标前公告，通常只提前约5个工作日才有，见下方坑9）。**2026-08-10 更新**：发行日历组件现在两个都用——`issue_date` 填"已确认"的日子，`bid_date` 接着填"已公告未开标"的日子（补上确认结果滞后的那段空档），两者在 UI 上用实线/虚线+颜色明确区分，且"已公告"的债券 `couponPct` 永远是 `null`（利率还没定），千万不要因为"数据能凑出来"就给它编一个利率。这两个口径都不能覆盖到的日期（超出已公告范围的未来）就应该留空，不能再拿月度计划硬拆日去填——那还是编造数据。
+3. **"发行安排"（计划）数据只有月度粒度，没有逐日拆分**——**不要为了做日历/时间图就把月度总额除以工作日数摊出"每日计划"**，那是编造数据。真正有逐日精度的是：`state_results.csv` 的 `issue_date`（已确认结果，但发布有滞后，通常滞后约一周）、`state_announcements.csv` 的 `bid_date`（招标前公告，通常只提前约5个工作日才有，见下方坑9）、以及新加入的 SSE"上市公告"（见上方2026-08-11条目，`src/sse_listing.py`，同日数据但没有利率）。**2026-08-11 更新**：发行日历组件现在是**三态**——`issue_date`填"已确认"，SSE上市公告填"已上市/利率待补"，`bid_date`填"已公告待开标"，按这个优先级覆盖同一天（`confirmed > listed > scheduled`）。三者在 UI 上用实线/点线/虚线+颜色明确区分，"已上市"和"已公告"两类的 `couponPct` 永远是 `null`（利率还没定），千万不要因为"数据能凑出来"就给它编一个利率或规模——SSE上市公告连规模都没有（`amountYi` 也是空）。**这三个口径都不能覆盖到的日期（超出已公告/已上市范围的未来）就应该留空，不能再拿月度计划硬拆日去填**——那还是编造数据。另外要注意："已上市"（SSE通知发布日）和"已公告"（原始bid_date）是两个不同的日期概念，同一支债券理论上可能在两个不同的日子里各出现一次（不去做跨源的债券身份匹配去重，这是已知的、接受的简化，见 `_calendar_month_slice` 里的说明）。
 
 4. **两份 dashboard 文件必须手动保持同步，且顺序不能错**：编辑用的是 session 临时目录下的 scratchpad 副本（`/private/tmp/claude-501/.../scratchpad/artifact/bond_analysis.html`，**每个新会话这个路径都会变**，不是固定路径），仓库里的权威副本是 `output/bond_analysis_dashboard.html`。`src/build_dashboard_plan.py` 的两个 `refresh_*_section()` 函数**只会改 `output/` 里那份**（硬编码 `config.OUTPUT_DIR`）。正确顺序永远是：① 在 scratchpad 副本上改 HTML/JS → ② `cp` scratchpad→output → ③ 跑 Python 刷新脚本（改的是 output 那份）→ **④ 再 `cp` output→scratchpad 一次，把刷新后的数据拷回去** → ⑤ 用 scratchpad 路径发布 Artifact → ⑥ git commit output 那份。**本次会话真实踩过一次**：忘了第④步，把还没刷新（日历数据是空 `{}` 桩）的 scratchpad 版本发布成了 Artifact，靠 `diff` 两份文件才发现，之后才补做第④步重新发布。**每次发布前务必 `diff` 一下两份文件确认完全一致。**
 
@@ -102,5 +113,5 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `faf725c` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `6fb53fa` |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |
