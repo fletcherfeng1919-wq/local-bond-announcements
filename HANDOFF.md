@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-11，最新 commit `d8bedd3`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-11，最新 commit `e3fee4f`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -153,5 +153,6 @@ Wind核对+全量图表重算这两件事都已完成、验证、发布、提交
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `d8bedd3` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `e3fee4f` |
+| 省级交叉验证模块 | `src/provincial_verify.py`（10个已确认省份，见第2节末尾说明） |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |
