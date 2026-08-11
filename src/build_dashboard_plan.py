@@ -23,6 +23,7 @@ import re
 import pandas as pd
 
 from . import config
+from .sse_listing import fetch_recent_listing_notices
 
 DASHBOARD_PATH = config.OUTPUT_DIR / "bond_analysis_dashboard.html"
 
@@ -148,20 +149,32 @@ CALENDAR_BLOCK_RE = re.compile(
 
 
 def _calendar_month_slice(result_df: pd.DataFrame, ann_df: pd.DataFrame, period: pd.Timestamp,
-                           latest_confirmed: pd.Timestamp) -> dict | None:
+                           latest_confirmed: pd.Timestamp, sse_listed: list[dict] | None = None) -> dict | None:
     """Build one month's calendar (day -> {n, amountYi, bonds, status}) for
-    [period, period+1month). Two source types, never blended within a day:
+    [period, period+1month). Three source types, never blended within a day:
     - *confirmed* days come from 发行结果/state_results.csv (issue_date) --
       settled auctions with a final coupon rate. Always wins if a date has
       confirmed rows.
+    - *listed* days come from SSE's 上市公告 feed (src/sse_listing.py),
+      keyed by the listing notice's own publish date -- a DIFFERENT date
+      concept than issue_date/bid_date (it's when the bond starts trading,
+      typically a couple days after auction, not the auction day itself).
+      Confirms the bond was successfully issued, but the notice itself
+      carries no coupon rate, so couponPct stays null and status is
+      "listed" ("已上市，利率待补"). Same-day-or-next-day faster than
+      celma's confirmed results, so it's the second priority.
     - *scheduled* days come from 发行前公告/state_announcements.csv (bid_date)
       -- the auction date is real and already public, but the coupon isn't
       set until the auction happens, so couponPct stays null and the day is
-      flagged status="scheduled" so the dashboard can render it distinctly
-      (and never imply a rate we don't have). Only fills in dates that have
-      no confirmed entry yet, so a day's status flips from scheduled to
-      confirmed automatically once results catch up -- never both at once.
-    Returns None if the month has neither confirmed nor scheduled rows at
+      flagged status="scheduled". Lowest priority: only fills in dates with
+      neither a confirmed nor a listed entry yet.
+    Because "listed" and "scheduled" key off different date concepts for the
+    same underlying bond, the same bond can legitimately appear on two
+    different calendar days (once as "scheduled" on its bid_date, once as
+    "listed" on its later listing-notice date) until celma's confirmed
+    result supersedes both -- this is a known, accepted simplification, not
+    deduplicated against each other; see build_dashboard_plan.py docstring.
+    Returns None if the month has no rows in any of the three sources at
     all (true for any month far enough in the future that it hasn't been
     announced yet). 发行安排 (monthly-only plan totals, no day field) is
     deliberately never used here -- there's no date to place it on."""
@@ -186,6 +199,38 @@ def _calendar_month_slice(result_df: pd.DataFrame, ann_df: pd.DataFrame, period:
             "bonds": bonds,
             "status": "confirmed",
         }
+
+    listed_through = None
+    if sse_listed:
+        by_day: dict[str, list[dict]] = {}
+        for row in sse_listed:
+            d = row["sseDate"]
+            period_str_start = period.strftime("%Y-%m-%d")
+            period_str_end = month_end.strftime("%Y-%m-%d")
+            if not (period_str_start <= d <= period_str_end):
+                continue
+            by_day.setdefault(d, []).append(row)
+        if by_day:
+            listed_through = max(by_day.keys())
+        for day, rows in by_day.items():
+            if day in days:
+                continue  # confirmed already covers this date
+            bonds = [
+                {
+                    "province": r["province"] or "--",
+                    "bondShortName": r["securityAbbr"] or "--",
+                    "term": "--",
+                    "amountYi": None,
+                    "couponPct": None,
+                }
+                for r in rows
+            ]
+            days[day] = {
+                "n": len(rows),
+                "amountYi": 0.0,
+                "bonds": bonds,
+                "status": "listed",
+            }
 
     scheduled_through = None
     if ann_df is not None and not ann_df.empty:
@@ -222,6 +267,7 @@ def _calendar_month_slice(result_df: pd.DataFrame, ann_df: pd.DataFrame, period:
     return {
         "monthLabel": f"{period.year}年{period.month}月",
         "asOf": latest_confirmed.strftime("%Y-%m-%d") if pd.notna(latest_confirmed) else None,
+        "listedThrough": listed_through,
         "scheduledThrough": scheduled_through.strftime("%Y-%m-%d") if scheduled_through is not None and pd.notna(scheduled_through) else None,
         "days": days,
     }
@@ -250,8 +296,12 @@ def _build_calendar_data(result_df: pd.DataFrame, announcement_df: pd.DataFrame 
         latest_confirmed = pd.NaT
 
     this_month, next_month = _current_and_next_month()
-    this_data = _calendar_month_slice(df, ann, this_month, latest_confirmed)
-    next_data = _calendar_month_slice(df, ann, next_month, latest_confirmed)
+    next_month_end = next_month + pd.offsets.MonthEnd(1)
+    sse_listed = fetch_recent_listing_notices(
+        this_month.strftime("%Y-%m-%d"), next_month_end.strftime("%Y-%m-%d")
+    )
+    this_data = _calendar_month_slice(df, ann, this_month, latest_confirmed, sse_listed)
+    next_data = _calendar_month_slice(df, ann, next_month, latest_confirmed, sse_listed)
     if this_data is None and next_data is None:
         return None
     return {"this": this_data, "next": next_data}
@@ -278,10 +328,12 @@ def _calendar_js_null_or(month: dict | None) -> str:
         )
     days_js = ",\n".join(day_entries)
     as_of_js = _js_string(month["asOf"]) if month["asOf"] else "null"
+    listed_js = _js_string(month["listedThrough"]) if month["listedThrough"] else "null"
     sched_js = _js_string(month["scheduledThrough"]) if month["scheduledThrough"] else "null"
     return (
         "{\n"
-        f"      monthLabel: {_js_string(month['monthLabel'])}, asOf: {as_of_js}, scheduledThrough: {sched_js},\n"
+        f"      monthLabel: {_js_string(month['monthLabel'])}, asOf: {as_of_js}, "
+        f"listedThrough: {listed_js}, scheduledThrough: {sched_js},\n"
         f"      days: {{\n{days_js}\n      }},\n"
         "    }"
     )
@@ -299,10 +351,11 @@ def _render_calendar_js_block(built: dict) -> str:
 def refresh_calendar_section(result_df: pd.DataFrame, announcement_df: pd.DataFrame | None = None,
                               dashboard_path=DASHBOARD_PATH) -> str | None:
     """Regenerate the embedded calendarData block (issuance calendar) inside
-    the dashboard HTML. Confirmed days come from result_df; if announcement_df
-    is passed, near-future scheduled-but-not-yet-confirmed days (from 发行前
-    公告 bid_date) fill in the gap between the last confirmed date and today.
-    Same no-op-on-failure contract as refresh_plan_section."""
+    the dashboard HTML. Confirmed days come from result_df; SSE's 上市公告
+    feed (live-fetched, see sse_listing.py) fills in "listed, rate pending"
+    days between the last confirmed date and today; announcement_df's bid_date
+    fills in "scheduled, not yet auctioned" days beyond that. Same
+    no-op-on-failure contract as refresh_plan_section."""
     if not dashboard_path.exists():
         return None
     built = _build_calendar_data(result_df, announcement_df)
@@ -324,8 +377,9 @@ def refresh_calendar_section(result_df: pd.DataFrame, announcement_df: pd.DataFr
             parts.append("无数据")
             continue
         n_confirmed = sum(1 for d in m["days"].values() if d["status"] == "confirmed")
+        n_listed = sum(1 for d in m["days"].values() if d["status"] == "listed")
         n_scheduled = sum(1 for d in m["days"].values() if d["status"] == "scheduled")
-        parts.append(f"{m['monthLabel']} 已确认{n_confirmed}天/已公告{n_scheduled}天")
+        parts.append(f"{m['monthLabel']} 已确认{n_confirmed}天/已上市{n_listed}天/已公告{n_scheduled}天")
     return " | ".join(parts)
 
 
