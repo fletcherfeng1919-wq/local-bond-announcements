@@ -65,6 +65,7 @@ PROVINCE_SOURCES below are wired up; extend it when/if the user asks.
 """
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import http_client, pdf_extract
 
@@ -127,7 +128,21 @@ PROVINCE_SOURCES: dict[str, ProvinceSource] = {
     "天津市": ProvinceSource(
         "天津市", "cz.tj.gov.cn", "image",
         "https://cz.tj.gov.cn/zwgk_53713/zfzq/202608/t20260804_7347170.html",
-        notes="Bond data is embedded as JPG images, not PDF/HTML text. NOT IMPLEMENTED.",
+        notes="Bond data is embedded as a sequence of JPG page-scan images (one per 'page' of the "
+              "original document, filenames like W020260804628643438038_ORIGIN.jpg), not a single "
+              "PDF/HTML doc -- parsed via parse_image_sequence() (downloads every content image "
+              "filtered by the W<18+ digits>_ORIGIN.<ext> naming convention, OCRs each with "
+              "pytesseract, concatenates page texts, reuses parse_announcement_text()). LOW YIELD "
+              "in practice like 重庆 (Chongqing), but for a DIFFERENT reason: 天津's original table "
+              "wraps the '计划发行规模'/'实际发行规模' cell labels onto two visual lines with other "
+              "cells' text interposed between them, so pytesseract's line-by-line reading never sees "
+              "'计划发行规模' as contiguous text -- amount/bond_name come back None on every row. "
+              "Tested against the real 10-image, 2026-08-04 batch: only 2 of 10 rows resolved to an "
+              "unambiguous single-candidate match (term+date alone, no amount to confirm), 7 correctly "
+              "quarantined as low_confidence by diff_against_state's ambiguous-multi-candidate check "
+              "(multiple 30Y bonds same day, nothing to disambiguate), 0 false matches or fabricated "
+              "mismatches produced. Not worth chasing further -- the label-wrapping issue is a "
+              "genuine OCR/layout limitation, not a parser bug.",
     ),
     "湖南省": ProvinceSource(
         "湖南省", "czt.hunan.gov.cn", "docx",
@@ -415,6 +430,76 @@ def parse_docx_table(docx_bytes: bytes, province: str) -> list[dict]:
     return rows
 
 
+# Content images on these sites (confirmed: 天津) follow a "W<18+ digits>_ORIGIN.<ext>"
+# naming convention distinct from site-chrome assets (logos/icons/decorative
+# images use short, human-readable filenames like "big.jpg"/"dy.jpg").
+_CONTENT_IMAGE_RE = re.compile(r'src="([^"]*W\d{15,}_ORIGIN\.(?:jpg|jpeg|png))"', re.I)
+
+
+def parse_image_sequence(cover_html: str, base_url: str, province: str, use_cache: bool = True) -> list[dict]:
+    """Parse a provincial 发行结果公告 whose content is a sequence of scanned
+    page images rather than a single PDF/HTML/docx document (confirmed: 天津).
+    Downloads every content image referenced on the cover page, OCRs each
+    with pytesseract (same chi_sim model pdf_extract.py uses for scanned
+    PDFs), concatenates the page texts in DOM order -- mirroring how
+    pdf_extract.py concatenates a multi-page PDF's text -- then reuses the
+    same shared parse_announcement_text() every other source goes through,
+    since the underlying field vocabulary is identical regardless of
+    delivery mechanism."""
+    if not pdf_extract.OCR_AVAILABLE:
+        raise RuntimeError(
+            "pytesseract/PyMuPDF/Pillow not available -- image OCR requires the same "
+            "optional OCR dependencies pdf_extract.py uses for scanned PDFs"
+        )
+    import pytesseract
+    from PIL import Image
+    from urllib.parse import urljoin
+    import io
+
+    # Confirmed (天津, 2026-08-11): each content image's filename appears
+    # TWICE in the page markup (a thumbnail <img> plus a full-size <a href>
+    # pointing at the same file, or similar) -- de-dup by filename (not by
+    # full URL, in case of a "./" vs bare-path prefix difference) or every
+    # page gets OCR'd twice and every bond row comes back doubled.
+    seen_filenames = set()
+    image_urls = []
+    for m in _CONTENT_IMAGE_RE.finditer(cover_html):
+        filename = m.group(1).rsplit("/", 1)[-1]
+        if filename in seen_filenames:
+            continue
+        seen_filenames.add(filename)
+        image_urls.append(urljoin(base_url, m.group(1)))
+    if not image_urls:
+        raise RuntimeError(f"no content images found on cover page {base_url}")
+
+    page_texts = []
+    for img_url in image_urls:
+        img_bytes = _fetch_bytes(img_url) if not use_cache else _fetch_bytes_cached(img_url)
+        img = Image.open(io.BytesIO(img_bytes))
+        page_texts.append(pytesseract.image_to_string(img, lang="chi_sim"))
+
+    rows = parse_announcement_text("\n".join(page_texts), province)
+    for r in rows:
+        r["extraction_method"] = "ocr"
+    return rows
+
+
+def _fetch_bytes_cached(url: str) -> bytes:
+    """Disk-cached wrapper around _fetch_bytes() for content images -- OCR is
+    slow (confirmed: several seconds per page image), so repeated calls
+    within/across sessions should hit the cache like pdf_extract.py's own
+    .extract.json sidecar does, not re-download+re-OCR every time."""
+    cache_file = http_client._cache_path(url, _config().RAW_PDF_DIR, Path(url).suffix or ".img")
+    if cache_file.exists() and cache_file.stat().st_size > 0:
+        return cache_file.read_bytes()
+    data = _fetch_bytes(url)
+    try:
+        cache_file.write_bytes(data)
+    except OSError:
+        pass
+    return data
+
+
 def verify_announcement(province: str, url: str, use_cache: bool = True) -> list[dict]:
     """Fetch and parse one provincial 发行结果公告 URL. Returns a list of
     bond-row dicts (see parse_announcement_text). Raises NotImplementedError
@@ -450,10 +535,13 @@ def verify_announcement(province: str, url: str, use_cache: bool = True) -> list
         docx_bytes = _fetch_bytes(docx_url)
         return parse_docx_table(docx_bytes, province)
 
+    if structure == "image":
+        cover_html = _fetch_html(url, use_cache=use_cache)
+        return parse_image_sequence(cover_html, url, province, use_cache=use_cache)
+
     raise NotImplementedError(
         f"structure '{structure}' for {province} is not implemented "
-        f"(see PROVINCE_SOURCES notes) -- docx needs python-docx, image needs OCR, "
-        f"unknown needs a real structure check first"
+        f"(see PROVINCE_SOURCES notes) -- unknown needs a real structure check first"
     )
 
 
@@ -501,10 +589,25 @@ def diff_against_state(rows: list[dict], state_df) -> dict:
             if candidates.empty:
                 not_found.append({"row": row, "reason": "no state_results.csv row for this province/date/term"})
                 continue
-            if row["total_amount_yi"] is not None and len(candidates) > 1:
-                close = candidates[(candidates["total_amount_yi"] - row["total_amount_yi"]).abs() <= AMOUNT_TOLERANCE_YI]
-                if len(close) == 1:
-                    candidates = close
+            if len(candidates) > 1:
+                if row["total_amount_yi"] is not None:
+                    close = candidates[(candidates["total_amount_yi"] - row["total_amount_yi"]).abs() <= AMOUNT_TOLERANCE_YI]
+                    if len(close) == 1:
+                        candidates = close
+                if len(candidates) > 1:
+                    # Multiple same-day same-term bonds and nothing (amount)
+                    # to tell them apart -- picking candidates[0] here would
+                    # be a coin flip dressed up as a "match". A row with no
+                    # amount/rate at all (confirmed: 天津's OCR, which loses
+                    # 计划/实际发行规模 to a table-layout quirk pytesseract
+                    # can't recover) must never silently claim to match a
+                    # SPECIFIC bond it can't actually distinguish.
+                    low_confidence.append({
+                        "row": row,
+                        "reason": f"{len(candidates)}支{row['province']}债券在{row['issue_date']}同为{row['term']}期，"
+                                  f"且本行缺少可用于区分的发行规模，无法确认具体对应哪一支，需人工核对原文",
+                    })
+                    continue
 
         srow = candidates.iloc[0]
         entry = {"row": row, "state_row": srow.to_dict()}

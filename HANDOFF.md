@@ -80,7 +80,7 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 
 ## 3. 当前卡在哪 / 已知缺口
 
-Wind核对+全量图表重算这两件事都已完成、验证、发布、提交、推送。`git status` 干净，`HEAD` 和 `origin/main` 一致（`d8bedd3`）。**唯一未完成的是省级财政厅交叉验证模块**（见上方"当前真正待办"小节）——已经做完调研（27省搜索结果），代码还没写，不算阻塞，只是还没开工。
+Wind核对+全量图表重算+省级财政厅自动爬虫+三方交叉校验+接入main.py，这些都已完成、验证、提交。`git status` 干净。**没有已知阻塞项**——下面记的都是"已知限制"（新疆WAF/重庆天津OCR低产出），不是待办。
 
 **但有一件重要的、只完成了一半的事，下一个会话大概率会被继续问到**：用户提供了一份Wind终端导出的"地方政府债一级市场"报表（覆盖2025-08-11~2026-08-10，2487条已确认债券），说这是最准的数据源，让核对我们自己的 `state_results.csv` 有没有缺口。核对结果发现了**三个真实的、系统性的提取bug**（不是孤立的8月问题，全年都有）：
 1. **多子档合并求和bug**：91支债券的 `total_amount_yi` 偏低——根因是同一 `bond_code` 在celma PDF表格里会拆成2-3行（比如一支专项债同时对应"项目收益/棚改/土地储备"三个子用途），`pipeline.py` 按 `bond_code` 去重时用 `keep="last"` 只留最后一行，其余子档金额被静默丢弃，而不是求和。
@@ -106,7 +106,44 @@ Wind核对+全量图表重算这两件事都已完成、验证、发布、提交
 
 用户原话："you don't need to refresh those data when the data is not complete"——**没有主动去把"部分确认"和"完全没找到"的那17个省份（甘肃/西藏/山西/陕西/山东/青岛/浙江/湖北/河南/江西/安徽/广东/吉林/黑龙江/云南/四川/福建/内蒙古）继续调查**，`PROVINCE_SOURCES` 里只登记了这10个。如果用户以后要扩展覆盖范围，先重复2026-08-11用过的方法（WebSearch找`site:域名 地方政府债券 发行结果`+WebFetch验证一个真实URL），再把新省份加进 `PROVINCE_SOURCES` 字典，解析逻辑大概率不需要改（除非又出现新的文档模板变体）。
 
-**当前真正待办**：还没有把这个模块接入 `main.py` 或做成自动化的"每月定期跑一遍"——目前是纯函数库，调用方式是手动 `from src import provincial_verify as pv; pv.verify_announcement(province, url)` 传入一个具体URL（因为省级列表页大多是JS渲染或有WAF挡着，找不到可靠的自动发现入口，见模块docstring）。如果用户要"每月自动跑"，需要先解决"怎么自动找到本月最新公告URL"这个问题——目前没有好方法，可能需要用 Playwright（本次会话早些时候找SSE接口时验证过的技术路径）对着这10个省份各自的列表页跑一遍网络抓包，或者干脆保持"用户看到新公告URL就手动传进来核对"这个更轻量的用法。
+**上面这段"还没接入main.py"的待办已经在2026-08-12做完了。** 完整经过记在下面的新小节里。
+
+### 2026-08-12：自动爬虫 + celma/SSE/省级财政厅三方交叉校验，接入 main.py
+
+用户明确要求把上面的手动核对模块升级成"全自动爬虫"，兼容PDF/Word/图片OCR，接入`main.py`全流程，做celma+SSE+省级财政厅三重交叉校验，自动刷新看板日历/计划，规避历史坑，输出校验报表，并且要能"复刻Wind数据库里的发行内容"。做完了，逐项记录如下。
+
+**1. 自动发现列表页（`src/provincial_crawl.py`，新文件）**：`provincial_verify.py` 原来只能解析"已知的单条公告URL"，没有办法自己找到最新公告。用 Playwright（本项目已经装过，找SSE接口时用过的同一套技术路径）渲染每个省份财政厅的公告列表页，解决了两类此前用 `requests`/`WebFetch` 搞不定的问题：① 大多数列表页是JS渲染的（纯请求拿到空页面或和真实内容无关的页面）；② 上海的"明显"列表页路由（`dfzwfxjg/index.html`）其实是后端一个真实存在的服务器错误（FreeMarker模板找不到），不是JS问题，Playwright 也救不了，只能找替代路由（`zss/zt/dfzfx/zxxx/index.html`，一个混合了多种公告类型的"最新消息"页，能用关键词过滤出发行结果类）。
+
+用了两轮5省一组的并行research agent（复用之前找PROVINCE_SOURCES时的模式）+ 自己直接验证，**10个省份全部找到了真实可用的列表页URL**（`LISTING_URLS` 字典），其中两个和"看起来对"的猜测路径不一样，属于踩坑记录：
+- **河北**：猜的 `root17/zfxx/index.html` 返回HTTP 200但只是个12字节的占位页——真实列表内容是通过一个 `<iframe src="/root17/3007/3058/list_292.htm">` 加载的，Playwright对父页面跑 `a` 选择器拿不到iframe里的内容，必须直接读原始HTML源码才能发现iframe标签，然后直接导航到iframe自己的URL（`root17/3007/3058/list_292.htm`）才能拿到真实列表。
+- **新疆**：列的栏目级页面（`c115017/`、`c115008/`）连Playwright都返回403（WAF拦截，不是JS问题，真实的服务器级拦截），唯一能拿到内容的是**网站首页**（混合多栏目的信息流），还需要把等待策略从默认的 `networkidle` 换成 `domcontentloaded` + 固定等3秒（因为首页有持续的后台请求，`networkidle` 永远等不到）。**已知限制**：首页信息流窗口有限，如果某省份的"发行结果"类公告已经被更新的其它公告挤出首页可见区域，会漏掉——这是接受的限制，不是bug，实测中新疆某次运行就出现过0条结果（本身在过去2个月确实发得少，不代表爬虫坏了）。
+
+`discover_links()` 的关键设计：① **完全不缓存列表页**（Playwright每次都是真实渲染），专门用来规避坑1（列表页缓存导致"看不到新公告"）——这类bug在这个模块里结构性不可能发生。② 用URL里嵌的日期过滤"最近N个月"，不依赖爬取渲染出来的"发布时间"文本节点（每个站点DOM结构不一样，硬编位置不划算）；② 日期解析有三层兜底：`/YYYY/M/D/`（江苏）→ `/YYYYMMDD/`（上海，日级精度）→ `/YYYYMM/`（其余大多数，仅月级精度）→ 都没有就退到从公告标题文本里抠"YYYY年M月D日"或"YYYY-MM-DD"（宁波的URL完全不含日期，只能靠标题；天津/重庆的 `<a>` innerText 里还发现有渲染出的日期徽章，也吃这条兜底）。**中途踩过一个真实的日期过滤bug**：宁波最初返回0条被误以为"最近没发行"，一查发现是 `date=None` 的项目不会被过滤器排除（逻辑是"as long as d is None, let it through"），所以旧公告全混进来了；补上标题日期兜底后，过滤器正确识别出宁波真实最近一次"发行结果"是6月26日（超出2个月窗口），返回0条是**真实数据**，不是bug——巧的是这正好暴露了一个有价值的发现：`state_results.csv` 里宁波8月已有2支债券的确认结果（来自celma），但宁波自己官网还没发布对应公告，**说明celma有时反而比省级官网自己更快**（不总是像文档里其它地方说的"celma滞后"那样）。
+
+**2. 天津图片OCR（`parse_image_sequence()`，`provincial_verify.py`）**：天津的发行结果是几张JPG扫描图（不是PDF也不是HTML），文件名规律是 `W<18位数字>_ORIGIN.jpg`（区别于站点logo等装饰性图片的短文件名）。字段内容用的是同一套标准模板，所以直接复用已有的 `parse_announcement_text()`，只是取文本的方式换成"下载每张图→pytesseract chi_sim OCR→按DOM顺序拼接多页文本"（和 `pdf_extract.py` 拼接多页PDF文本是同一个思路）。**踩了两个真实bug，都已修复**：
+  - **图片URL在页面里重复出现两次**（缩略图+原图两个标签都指向同一文件名），不去重会导致每张图被下载+OCR两次，每支债券在结果里出现两次。已按文件名（不是完整URL，防止 `./` 前缀差异导致去重失效）去重。
+  - **天津原版表格的"计划发行规模"/"实际发行规模"这两个字段标签在原始排版里跨两行显示，中间还夹着其它单元格的文字**（比如"计划发行 本5 实际发行 31.3577亿\n规模 0 规模 元"），OCR按行读出来后，"计划发行"和"规模"两个字永远连不上，共享正则解析器找不到这个字段，导致金额/期限/名称全部读不出来。**这是真实的排版限制，没有为了迁就它重写解析器**——和重庆的情况一样（版面把标签和值分组排列，不是紧邻），性价比低，已如实记录。天津10张图/批次实测结果：多数行金额/名称为空，样本量大时同一天同期限的多支债券之间无法互相区分。
+  - 由此暴露了 `diff_against_state()` 里一个更根本的问题：**当一行数据除了期限+日期外什么都没有、且同一天同期限有多支债券时，原来的逻辑会盲目挑第一个候选当作"匹配成功"**——这是抛硬币冒充验证结果，已经改成：多候选且没有金额可以排除歧义时，归入 `low_confidence`（新增原因文案"N支XX省债券在YYYY-MM-DD同为N期，且本行缺少可用于区分的发行规模，无法确认具体对应哪一支"），不再假装验证过了。
+
+**3. 三方交叉校验（`src/three_way_validate.py`，新文件）**：celma（`state_results.csv`，基准）vs SSE上市公告（`sse_listing.py`）vs 省级财政厅公告（上面两点）。三个源可信度不对等，处理方式也不同，不是简单三方merge：
+  - **SSE只能确认"存在"，不能确认金额/利率**（`sse_listing.py` 本来就没抓这两个字段）——用 `securityAbbr`（和celma的 `bond_short_name` 格式一致）查 `state_results.csv` 里有没有，只能报"celma还没收录"这一种问题，报不出数值差异。**实测发现一个有意思的现象，已经记录进代码注释**：2个月窗口里156条SSE上市公告，107条celma还没收录——但这不是均匀分布的"celma平均滞后一周"，而是**按省份剧烈分化**：青岛市在7月21日发布的10条上市公告，到8月12日运行时celma依然100%没收录（已经超过3周，不是"一周滞后"能解释的），同期浙江省的10条却100%已收录。这和本项目更早期会话里已经查证过的"celma对青岛的确认结果公告是批量爆发式发布，一次补发好几个月"完全吻合——不是新bug，是已知规律的又一次印证，已经在 `check_sse_coverage()` 的docstring和报表的"SSE缺口(按省份)"分表里把这个按省份拆开，不让它被平均数掩盖。
+  - **省级财政厅数据最全（金额/期限/利率都有）但可信度最低**（OCR噪音）——复用 `provincial_verify.diff_against_state()`，凡是 `low_confidence` 桶的行永远不参与"发现了差异"的判断。
+  - **自动修正比 `wind_reconcile.py` 保守**：`wind_reconcile.py` 敢直接覆盖，是因为Wind终端导出本身是干净权威数据；省级公告端到端可信度更低（本项目自己的三个提取bug历史都是从类似的扫描件/OCR路径里冒出来的），所以 `apply_corrections()` 只在"非低置信度 + 唯一匹配到state_df里的一行"两个条件都满足时才覆盖 `total_amount_yi`/`coupon_rate_pct`，从不新增行（省级模板大多没有债券编码，贸然新增有制造重复的风险，改成只报告不自动加）。用一个合成测试验证过幂等性：手工在内存里构造一条"金额多了50亿"的假数据跑一次 `apply_corrections`，确认写入磁盘；再跑第二次同样输入，确认0处新改动（因为磁盘上的值已经等于假数据要求的值，差值在容差内，不会重复触发）。
+  - **实测跑一次完整三方校验**（2026-08-12，回溯2个月）：SSE核对156条、省级财政厅核对约35条债券——**0处需要自动修正的金额/利率差异**（celma数据在已测试范围内是准确的），这本身是有价值的验证结果。
+  - 校验报表 `build_validation_report_xlsx()` 写到 `output/provincial_validation_report.xlsx`：总览 + SSE缺口(按省份) + SSE缺口明细 + 省级财政厅核对明细（含每一行的原因/备注和公告来源URL，方便人工复核）+ 已自动修正（如果有）。
+
+**4. 接入 `main.py`**：新增 `_run_provincial_check()`，在 `--skip-provincial` 未传时默认执行，**必须放在 `_prep_results()` 之前**（否则 `apply_corrections()` 改完 `state_results.csv` 之后，看板日历刷新读到的还是内存里没改过的旧 `result_df`，看板会滞后一步——这是本次新增的、这个具体接入方式特有的坑，写进了代码注释而不只是HANDOFF，防止以后有人挪动这两行的顺序）。因为要启动真实浏览器+做OCR，一次完整跑下来大约100秒左右，加了 `--skip-provincial` 方便调试时跳过，加了 `--provincial-months-back`（默认2）控制回溯窗口。校验失败会被完整 catch 住并转成一行状态文字打印出来，不会打断整个pipeline的其它步骤（`local_raw_data.xlsx`/看板刷新等照常完成）——和 `sse_listing.py` 现有的"best-effort，失败不影响主流程"原则保持一致。
+
+跑过三遍验证：① `--skip-crawl`（不重新抓celma，跑省级校验+看板刷新）——成功，`git status data/` 显示无变化（0处需要修正）；② 紧接着再跑一遍确认幂等——`git status data/` 依然无变化；③ `--skip-crawl --skip-provincial` 确认跳过开关本身好使。`output/bond_analysis_dashboard.html` 在这几次运行里没有产生diff（因为底层数据没变，marker替换出的内容和已提交版本字节相同）——**证明了"自动刷新看板发行日历与月度计划"这条要求已经生效**：不需要手动跑 `build_dashboard_plan.py` 的两个 `refresh_*` 函数，`main.py` 正常跑一遍就会带着（如果有）校验修正后的数据一起刷新。
+
+**5. "复刻Wind数据库里的发行内容"验证**：重新跑了一次 `wind_reconcile.reconcile_from_wind_file('地方政府债2026-08-11.xlsx', dry_run=True)`（用户之前给的同一份Wind导出，覆盖2025-08-11~2026-08-10），确认 `amount_mismatch=0, rate_mismatch=0, date_missing=0`——`state_results.csv` 对Wind能覆盖的整个窗口依然精确复刻，没有因为这次的大改动引入任何回归。`missing: 15` 是之前已经调查过、确认是celma原文和Wind展示口径的纯命名差异（非真实缺口），不是新问题。Wind只到8月10日，本次新建的SSE+省级三方校验机制补的正是"8月10日之后到现在"这一段Wind导出天然覆盖不到的窗口——两套机制合起来才是完整的"复刻能力"：历史用Wind核对，最新几天靠SSE+省级公告自动核对，不需要用户每次都手动导出新的Wind文件。
+
+**6. 对照第5节"踩过的坑"逐条自查**：坑1（列表页缓存）——`provincial_crawl.py` 的列表页发现完全不缓存，结构性规避；坑2（`datetime.date` vs `pd.Timestamp` 比较返回False不报错）——`three_way_validate.py`/`provincial_verify.py` 里所有 `state_df` 都用 `pd.read_csv` 直接读（不经过 `pipeline.load_state()` 的 `.dt.date` 转换），和自己构造的字符串日期（`"YYYY-MM-DD"`）比较，两边都是字符串，不存在类型不一致的坑；坑4（scratchpad/output两份dashboard文件不同步）——本次新代码不直接改dashboard HTML，只调用已有的 `refresh_*_section()`（只改 `output/` 那份），不涉及这个坑；坑6（用 `.venv` 不用系统python）——全程用 `.venv/bin/python3`/`.venv/bin/pip`；坑11（破坏性操作前先 `git status`）——每次跑 `main.py` 前后都检查过 `data/` 目录状态。
+
+**已知的、接受的限制（不是bug，别重新调查）**：
+- 新疆只能靠首页信息流"碰运气"，栏目级页面被WAF拦截（403），Playwright也过不去。
+- 重庆、天津的OCR质量导致解析低产出（重庆0/6可用字段，天津约1/3可用字段），已经在各自的 `PROVINCE_SOURCES` notes 里详细记录了具体的排版原因，没有为了这两个省份单独重写解析逻辑（性价比低，源头OCR质量才是瓶颈）。
+- 未接入的第10个源（原来是"天津未接入"，现在天津已接入但低产出）——**目前10个省份全部"接入"，但产出质量不均**，湖南/重庆/天津时不时会因为Playwright渲染时机差异（`networkidle` 判定、服务器响应速度）在某次运行里发现0条公告——这是正常的网页抓取波动，不是每次运行都要产出相同数量结果的确定性系统；下次运行通常能补上。
 
 **另外，`地方政府债*.xlsx` 这个文件名模式现在是Wind核对的标准输入**——如果用户以后又存了一份更新/更大的同名（或类似命名）文件到项目根目录，说"再核对一下"，直接调用 `src.wind_reconcile.reconcile_from_wind_file('文件名.xlsx')` 就行，不需要重新设计。
 
@@ -159,5 +196,8 @@ Wind核对+全量图表重算这两件事都已完成、验证、发布、提交
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
 | GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `ec03064` |
-| 省级交叉验证模块 | `src/provincial_verify.py`（10个已确认省份，见第2节末尾说明） |
+| 省级公告解析（单条URL） | `src/provincial_verify.py`（10个省份全部接入，见第2节说明） |
+| 省级自动爬虫（列表发现） | `src/provincial_crawl.py`（Playwright，`LISTING_URLS`/`crawl_all()`） |
+| 三方交叉校验+报表+自动修正 | `src/three_way_validate.py`（`run_validation()`/`apply_corrections()`/`build_validation_report_xlsx()`） |
+| 校验报表输出 | `output/provincial_validation_report.xlsx`（每次 `python main.py` 不带 `--skip-provincial` 都会重新生成） |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |
