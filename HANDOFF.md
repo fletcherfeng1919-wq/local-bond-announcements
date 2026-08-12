@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-11，最新 commit `41a3d11`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-11，最新 commit `957ea2e`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -228,7 +228,7 @@ Wind核对+全量图表重算+省级财政厅自动爬虫+三方交叉校验+接
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `41a3d11` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `957ea2e` |
 | 省级公告解析（单条URL） | `src/provincial_verify.py`（10个省份全部接入，见第2节说明） |
 | 省级自动爬虫（列表发现） | `src/provincial_crawl.py`（Playwright，`LISTING_URLS`/`crawl_all()`） |
 | 三方交叉校验+报表+自动修正 | `src/three_way_validate.py`（`run_validation()`/`apply_corrections()`/`build_validation_report_xlsx()`） |
