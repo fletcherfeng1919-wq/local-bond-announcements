@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-11，最新 commit `957ea2e`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-12，最新 commit `957ea2e`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
