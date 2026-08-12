@@ -2,13 +2,17 @@
 
 provincial_verify.py can only parse an ALREADY-KNOWN announcement URL --
 it has no way to find fresh ones on its own, because every one of these
-10 provincial listing/column pages either renders its article list via
+provincial listing/column pages either renders its article list via
 client-side JS (plain `requests`/`http_client.fetch()` gets an empty or
 unrelated page) or, in one case (上海), the "obvious" listing route is a
 genuinely broken server-side template that no amount of JS execution can
 fix. This module solves the discovery half using Playwright (a real
-headless Chromium instance), confirmed 2026-08-11 to render every one of
-these 10 listing pages correctly.
+headless Chromium instance), confirmed 2026-08-11/12 to render all 14
+currently-registered listing pages correctly (10 confirmed 2026-08-11,
+西藏/山东/青岛/河南 added 2026-08-12 in a second research pass -- see
+provincial_verify.py's module docstring and HANDOFF.md for the other ~14
+provinces investigated and confirmed to be genuine dead ends or still
+unresolved, not worth re-guessing at).
 
 ## Design notes / why it's built this way
 
@@ -65,6 +69,12 @@ LISTING_URLS: dict[str, str] = {
     "天津市": "https://cz.tj.gov.cn/zwgk_53713/zfzq/",
     "湖南省": "https://czt.hunan.gov.cn/czt/dzqzfzjxx/list.html",
     "重庆市": "https://czj.cq.gov.cn/zwgk_268/zfxxgkml/dfzfzw/",
+    # Added 2026-08-12, second research pass (see provincial_verify.py's
+    # PROVINCE_SOURCES for structure/quirk notes on each):
+    "西藏自治区": "https://www.xizang.gov.cn/zwgk/xxfb/gsgg_428/",
+    "山东省": "http://czt.shandong.gov.cn/col/col10559/index.html",
+    "青岛市": "http://qdcz.qingdao.gov.cn/zfxxgk/fdzdgknr/zdly/zwgl/index.shtml",
+    "河南省": "https://czt.henan.gov.cn/xwdt/tzgg/",
 }
 
 # 新疆's own column-level listing pages (c115017/, c115008/) are WAF-blocked

@@ -5,18 +5,19 @@ for verifying the most recent 1-2 months, since that's the window where
 celma's own publishing lag (see HANDOFF.md 2026-08-11 entries) matters most
 and the user doesn't have a fresh Wind export on hand every time.
 
-## Why there's no listing/crawl automation here
+## Listing/crawl automation
 
 Every provincial site's own *listing* page for this column was either
 JS-rendered (empty on a plain fetch, same failure mode as celma's list-page
 caching pitfall) or blocked by a WAF/cert mismatch when probed with
-WebFetch/requests. There is no reliable "give me this province's bonds for
-month X" entrypoint the way celma.org.cn's channelId-based pagination gives
-us. So this module's unit of work is **one already-known announcement URL**
-(found via WebSearch, same way PROVINCE_SOURCES below was populated) --
-verify_announcement() parses it, diff_against_state() cross-checks it. This
-mirrors wind_reconcile.py's own shape (a manually-supplied input, not a
-live crawl).
+WebFetch/requests -- so this module's own unit of work is deliberately just
+**one already-known announcement URL** (verify_announcement() parses it,
+diff_against_state() cross-checks it), mirroring wind_reconcile.py's shape.
+Automatic discovery of fresh URLs lives one layer up, in
+`src/provincial_crawl.py` (Playwright-based; solves the JS-rendering problem
+this module's own plain-HTTP fetchers can't) -- `crawl_all()`/`crawl_province()`
+there call back into this module's `verify_announcement()`/`diff_against_state()`
+for the actual parsing once a URL is found.
 
 ## Why matching is (province, issue_date, term, amount), not bond_short_name
 
@@ -43,25 +44,33 @@ mismatches.
   宁波) -- no OCR risk.
 - "docx" (湖南): attachment is a Word doc containing an actual table (same
   field vocabulary as pdf/html, just already structured into cells) --
-  parsed via parse_docx_table() using python-docx (now a project
-  dependency, see requirements.txt). czt.hunan.gov.cn's TLS handshake also
-  fails on this machine's OpenSSL (`BAD_ECPOINT`) via requests/urllib3;
+  parsed via parse_docx_table() using python-docx (a project dependency,
+  see requirements.txt). czt.hunan.gov.cn's TLS handshake also fails on
+  this machine's OpenSSL (`BAD_ECPOINT`) via requests/urllib3;
   _fetch_html()/_fetch_bytes() fall back to a `curl` subprocess for it.
-- "image" (天津): announcements are JPG scans, would need the same
-  fitz+pytesseract OCR path pdf_extract.py uses for scanned PDFs, just
-  applied to a standalone image instead of a PDF page. NOT IMPLEMENTED --
-  calling verify_announcement() for it raises NotImplementedError rather
-  than silently returning nothing.
-- 重庆 (Chongqing): cover URL confirmed real but WebFetch couldn't extract
-  a body during research -- structure genuinely unconfirmed, not just
-  unimplemented. Don't assume "pdf" or "html" for it without checking.
+- "image" (天津): announcements are a sequence of JPG page-scan images --
+  parsed via parse_image_sequence() (downloads content images filtered by
+  filename convention, OCRs each with pytesseract, concatenates, reuses
+  parse_announcement_text()). Low yield in practice (OCR noise), see
+  PROVINCE_SOURCES notes.
+- 重庆 (Chongqing): "pdf", confirmed low-yield due to a label-block-then-
+  value-block layout the shared parser doesn't handle (see its notes).
 
-Per explicit user instruction (2026-08-11): do NOT chase the remaining
-~17 provinces where research only found partial leads or nothing at all
-(甘肃/西藏/山西/陕西/山东/青岛/浙江/湖北/河南/江西/安徽/广东/吉林/黑龙江/
-云南/四川/福建/内蒙古 -- 内蒙古 specifically confirmed to have NO
-province-own results page at all, not just unfound). Only the provinces in
-PROVINCE_SOURCES below are wired up; extend it when/if the user asks.
+14 provinces confirmed working as of 2026-08-12 (see PROVINCE_SOURCES).
+12 more were investigated in a second research pass (2026-08-12, after
+gaining Playwright for JS-rendered listing pages) and confirmed to be
+genuine dead ends -- their own sites publish no 发行结果 content at all,
+only pre-issuance notices/plans/redemption bulletins, verified by reading
+full document text where title alone was ambiguous (not just a "couldn't
+find it" gap): 内蒙古/陕西/浙江/湖北/江西/安徽/广东/黑龙江/吉林/云南/四川
+(+甘肃, WAF-blocked, confirmed unreachable rather than content-checked).
+2 remain genuinely unresolved rather than dead: 山西 (network-level TLS
+block from this environment, site itself is live) and 福建 (a server-side
+category-filter bug unrelated to JS rendering -- Playwright renders the
+page fine but the wrong content, see HANDOFF.md for the classsql detail).
+Full findings, including the reasoning per province, are in HANDOFF.md's
+2026-08-12 entries -- read those before re-investigating any of the above
+to avoid duplicating settled work.
 """
 import re
 from dataclasses import dataclass
@@ -170,6 +179,57 @@ PROVINCE_SOURCES: dict[str, ProvinceSource] = {
               "would need a positional label/value pairing strategy instead of adjacency regex to "
               "improve, not attempted -- low ROI given how poor the source OCR itself is.",
     ),
+    # ---- Added 2026-08-12, second research pass (17 provinces re-investigated
+    # with Playwright after the first pass had only WebFetch/WebSearch; 12 came
+    # back confirmed genuine dead ends -- own site publishes no 发行结果 content
+    # at all, see HANDOFF.md -- these 4 came back with real, working sources) ----
+    "西藏自治区": ProvinceSource(
+        "西藏自治区", "www.xizang.gov.cn", "html",
+        "https://www.xizang.gov.cn/zwgk/xxfb/gsgg_428/202604/t20260427_536860.html",
+        notes="Publishes via the general regional government portal, not a dedicated czt.xizang.gov.cn "
+              "(doesn't exist). Clean inline HTML, no PDF/OCR -- verified 2/2 bonds matched celma "
+              "exactly on the calibration sample. Uses a THIRD issue-date phrasing distinct from "
+              "every other confirmed province: '...财政厅于2026年4月27日在深圳证券交易所招标发行了...' "
+              "(date precedes '招标发行', not following '已完成招标') -- handled by _ISSUE_DATE_RE2. "
+              "A first WebFetch-based research pass hit this exact URL and got blocked by the site's "
+              "own WAF ('您所提交的请求含有不合法的参数'); Playwright with a real browser got through "
+              "cleanly on retry, no special config needed.",
+    ),
+    "山东省": ProvinceSource(
+        "山东省", "czt.shandong.gov.cn", "pdf",
+        "http://czt.shandong.gov.cn/art/2026/7/28/art_10559_10330986.html",
+        notes="Text-native PDF (not scanned) -- extract_pdf() uses its text layer directly, no OCR "
+              "involved at all. Verified 6/6 bonds matched celma exactly (coupon_rate_pct came back "
+              "None on all 6 since this particular announcement's PDF states amounts/terms but not "
+              "rates inline -- a genuine document-content gap, not a parser failure; still useful for "
+              "amount/date cross-checking). A first WebFetch-based pass failed here with what looked "
+              "like a TLS cert mismatch (cert issued to *.ybj.shandong.gov.cn) -- Playwright with "
+              "`ignore_https_errors=True` connects fine, so it was never a real blocker for a proper "
+              "browser, just for a plain HTTP client.",
+    ),
+    "青岛市": ProvinceSource(
+        "青岛市", "qdcz.qingdao.gov.cn", "pdf",
+        "http://qdcz.qingdao.gov.cn/zfxxgk/fdzdgknr/zdly/zwgl/202607/t20260720_10681232.shtml",
+        notes="MUST use http:// not https:// -- the https scheme 403s outright (not a cert-validation "
+              "issue `ignore_https_errors=True` can paper over; it's a hard block on that scheme), "
+              "while plain http:// connects with no issue at all. A first pass had only tried the "
+              "general municipal portal (www.qingdao.gov.cn, PR articles only, not real announcements) "
+              "and gotten a cert-mismatch error on this domain's https -- never tried http://. Scanned "
+              "PDF (OCR), LOW YIELD similar to 重庆/天津: tested against a real 8-bond batch and only "
+              "1 came back with clean, complete fields; the rest lost various fields to OCR noise but "
+              "were correctly caught by low_confidence rather than reported as false matches/mismatches.",
+    ),
+    "河南省": ProvinceSource(
+        "河南省", "czt.henan.gov.cn", "pdf",
+        "http://czt.henan.gov.cn/2026/08-11/3397843.html",
+        notes="Listing column is `/xwdt/tzgg/` (NOT `/xwdt/tzgg/index_7.html` -- that page-7 suffix "
+              "used in the first research pass landed deep in stale pagination and never surfaced "
+              "current results; the base URL has current ones on page 1). PDF is hosted on a SEPARATE "
+              "subdomain `xcoss.henan.gov.cn`, confirmed already in the first pass. Scanned PDF (OCR), "
+              "LOW YIELD like 青岛/重庆/天津 -- tested against a real 2-bond 2026-08-11 batch and both "
+              "rows were correctly caught by low_confidence (OCR block-splitting artifact), 0 usable "
+              "rows but also 0 false positives.",
+    ),
 }
 
 _BOND_BLOCK_RE = re.compile(r"债券名称")
@@ -184,6 +244,10 @@ _PLANNED_AMOUNT_WAN_RE = re.compile(r"计划发行规模([\d.]+)万元")
 _TERM_RE = re.compile(r"发行期限(\d+)年")
 _RATE_RE = re.compile(r"票面利率([\d.]+)%")
 _ISSUE_DATE_RE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日已完成招标")
+# 西藏 confirmed (2026-08-12) to use yet another phrasing -- "...财政厅于
+# 2026年4月27日在深圳证券交易所招标发行了..." -- date precedes "招标发行"
+# rather than following "已完成招标".
+_ISSUE_DATE_RE2 = re.compile(r"于(\d{4})年(\d{1,2})月(\d{1,2})日.{0,20}招标发行")
 # 宁波 confirmed (2026-08-11) to never use the "已完成招标" phrasing at all
 # -- the bid date only appears in the announcement's own title, e.g.
 # "2025年5月23日宁波市政府债券发行结果公告". Tried as a fallback only.
@@ -236,7 +300,7 @@ def parse_announcement_text(raw_text: str, province: str) -> list[dict]:
     mismatch by diff_against_state -- always inspect `warnings` first."""
     text = re.sub(r"\s+", "", raw_text).replace("|", "")
 
-    date_m = _ISSUE_DATE_RE.search(text) or _TITLE_DATE_RE.search(text)
+    date_m = _ISSUE_DATE_RE.search(text) or _ISSUE_DATE_RE2.search(text) or _TITLE_DATE_RE.search(text)
     issue_date = f"{date_m.group(1)}-{int(date_m.group(2)):02d}-{int(date_m.group(3)):02d}" if date_m else None
 
     blocks = _BOND_BLOCK_RE.split(text)[1:]
@@ -376,7 +440,8 @@ def parse_docx_table(docx_bytes: bytes, province: str) -> list[dict]:
 
     issue_date = None
     for p in doc.paragraphs:
-        m = _ISSUE_DATE_RE.search(p.text.replace(" ", ""))
+        t = p.text.replace(" ", "")
+        m = _ISSUE_DATE_RE.search(t) or _ISSUE_DATE_RE2.search(t)
         if m:
             issue_date = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
             break
