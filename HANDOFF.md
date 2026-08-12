@@ -188,11 +188,34 @@ Wind核对+全量图表重算+省级财政厅自动爬虫+三方交叉校验+接
 - 更早期还有一条 todo 提到"re-run ~90 old announcement gap-fill items"（大意是有约90条发行前公告因为一个已修复的PDF缓存损坏bug需要重新抓取验证）——**当前会话没有去核实这条是否已经处理完**，如果用户提起，先去查证现状而不是直接假设它还没做或已经做了。
 - 下月（当前是2026年9月）发行计划数据目前只有 2/37 个省份提前公布——**这是正常现象不是bug**，多数省份的月度发行安排会在月底前陆续发布，脚本会在下次刷新时自动捕捉更多。发行日历"下月"格子目前是空的同样正常——确认结果不可能有未来数据，等到了9月它自然会变成"本月"并开始有数据。
 
+### 2026-08-12 第三轮：Wind对比 + chinabond.com.cn 全国统一门户（重大发现）
+
+用户直接问了三个问题："对比Wind的近两个月发行/发行计划还差哪些？地方财政厅网站能有效补充吗？chinabond.com.cn下面有什么，抓一下纳入数据库"。逐条回答/处理如下。
+
+**① Wind对比结果（近2个月，即2026-06-12~2026-08-10，Wind导出覆盖到08-10为止）**：跑了 `wind_reconcile.reconcile_from_wind_file(dry_run=True)`，**近2个月0处差异**——15条"missing"全部是2026年5月以前的旧数据，且都是已经调查过的celma/Wind纯命名差异（非真实缺口），不是本次新发现。真正没有被Wind覆盖的窗口是**08-11~08-12（"今天"和"昨天"）**，因为Wind文件本身就是08-11导出、只到08-10——这段用SSE校验来看。
+
+**② SSE缺口现状（跑到现在，2026-08-12）**：163条上市公告里11条celma还未收录——**全部集中在河南(4)、广东(3)、内蒙古(2)、黑龙江(2)**，全部是08-07之后的最近几天，符合celma一贯的滞后节奏。**手动读了其中两份公告的PDF原图**（OCR识别失败但人眼能看清）验证内容真实：河南的"五十至五十三期"批次4支债券（26河南债58~61，均10年期/1.76%，规模分别44.52/193.67/18.06/44.56亿元）、内蒙古"再融资一般债券七期"（26内蒙18，41.7053亿元/10年/1.76%）——**这些缺口是真实的，源头文件也确实找得到，只是我们的自动化流程当前还不能可靠地读出来**，需要人工核对。
+
+**③ 发行计划缺口**：`state_plans.csv` 里2026年8月缺发行计划的省份有10个：上海市、吉林省、大连市、山西省、广东省、新疆生产建设兵团、河南省、西藏自治区、辽宁省、青岛市。**这是和"发行结果"完全不同的一类文档**（月度汇总表，不是逐笔债券明细），目前项目里没有任何解析器能读它（`provincial_verify.parse_announcement_text()` 是为逐笔债券设计的，喂给发行计划类PDF直接返回空）。
+
+**④ chinabond.com.cn 是本次会话最大的发现，效果远超预期**：用户问"地方财政部网站能有效补充吗"时，答案是"能，但受限于各省官网本身的质量参差不齐（12个省份官网压根没有这类内容）"——但顺着"chinabond.com.cn下面有什么"这个问题查下去，发现了一个**中央国债登记结算有限责任公司（中债登，官方债券登记托管机构）运营的全国统一地方债信息披露门户**，网址 `https://www.chinabond.com.cn/dfz/`，背后是一个纯JSON REST API（**不需要Playwright，`requests.get()`直接能用**），总共9563条记录，同时覆盖**发行计划**和**发行结果**两类文档，且**issuer参数用省份短名（去掉"省"/"自治区"/"市"后缀，如"内蒙古"而非"内蒙古自治区"）就能查到所有37个省份**，包括之前完全查不到或被墙的内蒙古/黑龙江/甘肃/山西/福建/浙江——**这6个省份在chinabond上全部有真实数据**，用真实请求验证过。
+
+新建了 `src/chinabond_crawl.py`：
+- API: `https://www.chinabond.com.cn/cbiw/lgb/infoListByPath`，参数 `channelName`（`xxplwj_fxjg`=发行结果, `xxplwj_fxjh`=发行计划）+ `issuer`（短名）+ 固定的 `_tp_lgbInfo=1&pageSize=10&depth=3`（pageSize似乎只接受10，翻页参数还没找到，目前只能拿到每个筛选条件下最新的10条）。
+- 发行结果文档复用了现成的 `parse_announcement_text()`（同一套标准模板，直接能解析，不用新写解析器）。
+- **重要的踩坑记录**：用6个"不可能省份"（内蒙古/黑龙江/甘肃/山西/福建/浙江，共139行）测试后发现**凡是能同时解析出issue_date和term的行，100%都能在celma里匹配上**——之前看到的"72行没匹配上"全部是OCR/解析失败导致缺字段，不是celma真缺数据。**这是个重要的方法论提醒：判断chinabond的某一行是否代表"celma的真实缺口"，必须先看这一行有没有成功解析出日期和期限，缺任何一个的话这行的"未匹配"结论是无效的（不是缺口，是我们自己没读出来）**。
+- 用一份内蒙古的单债券PDF人工验证了这一点：渲染成图片后人眼完全能读清楚表格（计划/实际发行规模41.7053亿元、10年、1.76%），但pytesseract这次连表格都没读出来（只读出了开头一段文字）——**这份PDF本身质量很好，是OCR在"带红色公章遮挡+表格边框"这种排版上表现不稳定，不是分辨率问题**（已经是300 DPI）。没有花时间去调OCR参数，值得以后单独一轮解决（比如试试不同的Tesseract PSM模式，或者先把红色公章区域裁掉再识别）。
+- 加了一个专门的 `three_way_validate.check_chinabond_for_sse_gaps()` 函数：给定SSE缺口列表，反查chinabond对应省份最近的发行结果条目，按日期±3天粗匹配。**跑了一次，当前11条SSE缺口，chinabond全部11条都能找到对应公告**（100%命中率）——证明这条路径确实能覆盖celma+SSE都补不上的窗口，虽然自动提取字段还不够可靠，但"文档本身找不找得到"这一层已经完全解决了。
+- **故意没有接入 `main.py` 默认流程**：OCR很慢（10个省份测试跑了2分多钟还中途因为系统代理瞬时故障失败过一次），且不能盲信自动提取结果（同上，需要人工核对），所以目前是一个手动/按需调用的诊断工具，不是自动流水线的一部分。如果以后要接进去，`check_chinabond_for_sse_gaps()` 是现成的起点。
+- 发行计划（`xxplwj_fxjh`）channel还没写解析器——下载了一份上海市2026年8月计划PDF确认结构是一张小汇总表（不是逐笔明细），和发行结果的解析逻辑完全不通用，需要单独写。如果用户明确要"补齐发行计划10省缺口"，这是下一步要做的事：新解析器 + 把 `check_sse_coverage()` 类似的思路套到发行计划场景（不过发行计划没有SSE这样的旁证源可以交叉验证，只能直接对着celma看有没有）。
+- 顺带确认了这台机器的系统代理问题（`127.0.0.1:1082`）在 `requests` 直连（不经过Playwright）时也会偶发503，已经在 `_get_with_retry()` 里加了3次重试+退避，`crawl_all_results()` 单省失败不会拖垮整批。
+
 ## 4. 下一步可能的计划（未经用户确认，仅供参考）
 
 - 如果用户要继续扩展看板：目前 6 个"坑"里最容易被下一次修改重新踩中的是坑1（缓存导致数据显示滞后）和坑4（两份文件不同步）——动手前先复习第5节。
 - 如果用户要处理 2020 年前旧格式结果数据，需要新写一个 `extract_result_legacy.py`（`extract_result.py` 里已经预留了这个文件名和判断逻辑的 TODO 位置）。
 - 如果用户要给看板加更多"自动刷新"的章节，复用 `src/build_dashboard_plan.py` 的 marker-替换模式（单行注释、`re.DOTALL` 非贪婪匹配），不要发明新模式。
+- **chinabond.com.cn 是当前最有潜力的下一步方向**：① 给"发行计划"(`xxplwj_fxjh`) 写一个新解析器（结构是月度小汇总表，不是逐笔明细，不能复用 `parse_announcement_text()`），直接可以补上 `state_plans.csv` 现在缺的10个省份的8月计划；② 如果要提升"发行结果"自动提取的可靠度，值得花一轮专门调OCR（试试不同Tesseract PSM模式，或者先裁掉PDF里的红色公章区域再识别）；③ `check_chinabond_for_sse_gaps()` 目前只是"找到对应公告"，如果要往前一步做到"自动读出数据、达到能自动patch进state_results.csv的置信度"，需要先解决②的OCR问题。
 
 ## 5. 踩过的坑 —— 绝对不要再踩
 
@@ -229,8 +252,10 @@ Wind核对+全量图表重算+省级财政厅自动爬虫+三方交叉校验+接
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
 | GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `957ea2e` |
-| 省级公告解析（单条URL） | `src/provincial_verify.py`（10个省份全部接入，见第2节说明） |
+| 省级公告解析（单条URL） | `src/provincial_verify.py`（14个省份接入，见第2节说明） |
 | 省级自动爬虫（列表发现） | `src/provincial_crawl.py`（Playwright，`LISTING_URLS`/`crawl_all()`） |
 | 三方交叉校验+报表+自动修正 | `src/three_way_validate.py`（`run_validation()`/`apply_corrections()`/`build_validation_report_xlsx()`） |
 | 校验报表输出 | `output/provincial_validation_report.xlsx`（每次 `python main.py` 不带 `--skip-provincial` 都会重新生成） |
+| chinabond.com.cn 全国统一门户爬虫 | `src/chinabond_crawl.py`（纯requests，不需要Playwright，覆盖全部37省，见第4节末尾"下一步"） |
+| chinabond缺口反查 | `src/three_way_validate.py::check_chinabond_for_sse_gaps()`（按需调用，不在main.py默认流程里） |
 | Python 环境 | `.venv/bin/python3`（不要用系统 `python3`） |

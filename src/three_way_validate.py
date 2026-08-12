@@ -282,3 +282,55 @@ def build_validation_report_xlsx(validation: dict, corrections: dict | None = No
             ws.column_dimensions[get_column_letter(i)].width = max(14, min(header_len + 4, 45))
     wb.save(out_path)
     return out_path
+
+
+# ---------------------------------------------------------------------------
+# chinabond.com.cn gap-fill check (on-demand, NOT part of run_validation())
+# ---------------------------------------------------------------------------
+#
+# Deliberately NOT wired into run_validation()/main.py's default path:
+# src/chinabond_crawl.py's OCR pass is expensive (confirmed 2026-08-12: 10
+# provinces took well over 2 minutes and hit a transient proxy failure once)
+# and, per that module's docstring, a raw not_found count from it isn't
+# trustworthy on its own -- every "not found" row where the parser also
+# failed to extract issue_date/term needs a human glance at the PDF, not an
+# automatic verdict. So this is an on-demand tool for the specific moment
+# you already know (from check_sse_coverage()) which bonds are missing and
+# want to check whether chinabond.com.cn happens to have the confirming
+# document -- not a step that should silently run on every pipeline build.
+
+def check_chinabond_for_sse_gaps(sse_missing: list[dict], page_size: int = 10) -> list[dict]:
+    """For each SSE-flagged missing bond (as returned by
+    check_sse_coverage()['missing_from_celma']), fetch that province's
+    recent chinabond.com.cn 发行结果 items and report whether any of them
+    plausibly cover it (by date + a loose title match on the bond's
+    tranche description). Returns a list of {"sse_bond", "chinabond_match"}
+    -- `chinabond_match` is None if nothing plausible was found in the
+    fetched page. This does NOT parse/confirm exact amount/rate; that
+    still requires reading the actual PDF (see chinabond_crawl.py's module
+    docstring for why automated extraction isn't reliable enough to trust
+    blindly here)."""
+    from . import chinabond_crawl as cb
+
+    by_province: dict[str, list[dict]] = {}
+    results = []
+    for bond in sse_missing:
+        prov = bond.get("province")
+        if not prov:
+            results.append({"sse_bond": bond, "chinabond_match": None})
+            continue
+        if prov not in by_province:
+            try:
+                by_province[prov] = cb.fetch_channel_page(cb.CHANNEL_RESULTS, issuer=prov, page_size=page_size)
+            except Exception:
+                by_province[prov] = []
+        candidates = [
+            item for item in by_province[prov]
+            if item.get("createTime") and bond.get("sseDate")
+            and abs((pd.Timestamp(item["createTime"]) - pd.Timestamp(bond["sseDate"])).days) <= 3
+        ]
+        results.append({
+            "sse_bond": bond,
+            "chinabond_match": candidates[0] if candidates else None,
+        })
+    return results
