@@ -14,7 +14,14 @@ import re
 from .classify import extract_province
 
 TITLE_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
-TITLE_QUARTER_RE = re.compile(r"(\d{4})\s*年第?([一二三四1234])\s*季度")
+# The [\s\S]{0,12}? gap (was: none at all) confirmed necessary 2026-08-12
+# for chinabond.com.cn's 广东 plan documents -- their title text reads
+# "2026年广东省政府债券三季度发行计划", i.e. issuer name + "债券" sit
+# between the year and the quarter marker (celma's own plan titles never
+# have this gap, hence the original tight pattern). [\s\S] (not `.`) is
+# needed because the source PDF sometimes line-wraps mid-phrase ("...政\n
+# 府债券..."), and plain `.` doesn't match newlines without re.DOTALL.
+TITLE_QUARTER_RE = re.compile(r"(\d{4})\s*年[\s\S]{0,12}?第?([一二三四1234])\s*季度")
 QUARTER_CN = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
 
 REFI_BLOCK_RE = re.compile(r"时间\s*再融资债券计划发行规模\s*\n([^\n]+)")

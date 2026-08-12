@@ -3,8 +3,8 @@
 Text-native PDFs (most provinces) go through pdfplumber directly. Some
 provinces publish flattened/scanned PDFs with no text layer at all --
 pdfplumber returns empty strings for those, so we fall back to OCR
-(PyMuPDF page rasterization + pytesseract chi_sim) when every page comes back
-empty. OCR'd output is materially less trustworthy for numeric fields (bond
+(page rasterization + pytesseract chi_sim) when every page comes back empty.
+OCR'd output is materially less trustworthy for numeric fields (bond
 amounts, dates), so callers must propagate `method == "ocr"` into a warning
 on any row built from it -- never silently trust an OCR'd number the same as
 a text-extracted one.
@@ -15,9 +15,7 @@ from pathlib import Path
 import pdfplumber
 
 try:
-    import fitz  # PyMuPDF
     import pytesseract
-    from PIL import Image
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
@@ -33,16 +31,35 @@ def _extract_text_layer(pdf_path) -> tuple[list[str], list[list[list]]]:
     return page_texts, page_tables
 
 
-def _ocr_pages(pdf_path, dpi: int = 300) -> list[str]:
+def _ocr_pages(pdf_path, resolution: int = 150) -> list[str]:
+    # Two settings confirmed 2026-08-12 to dramatically outperform the
+    # previous defaults on this project's actual document class (a bordered
+    # grid table -- province/amount/term/rate cells -- often overlapped by a
+    # red official seal stamp):
+    #   1. Render via pdfplumber's own `page.to_image()` (a palette-mode /
+    #      "P" mode PIL image), NOT PyMuPDF's `get_pixmap()` (RGB mode) --
+    #      tested side by side at matched effective resolution, the
+    #      palette-mode render OCRs dramatically better on this seal+grid
+    #      document class. Counterintuitively, pdfplumber's default
+    #      resolution=150 outperformed higher settings (200/300) when
+    #      rendered this way -- higher DPI made characters too large for
+    #      Tesseract's expected range on this template. Don't "fix" this by
+    #      bumping resolution back up without re-testing both axes together
+    #      (renderer AND resolution both matter, independently).
+    #   2. `--psm 4` ("assume a single column of text of variable sizes")
+    #      instead of Tesseract's default PSM 3 (fully automatic layout
+    #      analysis, which gets confused by the seal + grid lines and
+    #      returns near-garbage on this template).
+    # Verified across 5 previously-low-yield documents (上海 issuance plan,
+    # 内蒙古/河南/重庆 issuance results): 重庆 in particular went from 0/6
+    # usable bond rows to nearly all fields readable on the same source PDF.
+    # If a future source regresses under this combo, that's worth its own
+    # investigation rather than reverting this default wholesale.
     texts = []
-    doc = fitz.open(pdf_path)
-    try:
-        for page in doc:
-            pix = page.get_pixmap(dpi=dpi)
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            texts.append(pytesseract.image_to_string(img, lang="chi_sim"))
-    finally:
-        doc.close()
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            img = page.to_image(resolution=resolution).original
+            texts.append(pytesseract.image_to_string(img, lang="chi_sim", config="--psm 4"))
     return texts
 
 

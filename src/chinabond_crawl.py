@@ -77,14 +77,33 @@ as authoritative as a text-native PDF (confirmed: 山东's own site) or clean
 inline HTML (confirmed: 宁夏/西藏).
 
 For channelName="xxplwj_fxjh" (发行计划): a DIFFERENT, much simpler
-document -- a single small monthly summary table (province, total 亿元,
-新增/再融资 breakdown), not per-bond blocks. **No parser exists for this
-yet** -- parse_announcement_text() will not produce anything useful against
-it (confirmed: tested against a real 上海市 2026年8月 plan PDF, got 0 usable
-fields). This is exactly the kind of document that could fill the "10
-provinces missing an August plan in state_plans.csv" gap identified
-2026-08-12, but building that parser is separate follow-up work, not done
-in this pass.
+document -- a single small monthly/quarterly summary table (province, total
+亿元, 新增/再融资 breakdown), not per-bond blocks. parse_announcement_text()
+does not work against it (confirmed: 0 usable fields on a real 上海市
+2026年8月 plan PDF). A dedicated parser was built 2026-08-12 (see
+parse_plan_pdf() and its helpers below) using a 3-tier strategy, since at
+least 4 distinct real-world table templates are in circulation across
+provinces:
+  1. Structured table-geometry parsing, in two orientations:
+     _parse_plan_table_column_oriented() for 山东/辽宁-style tables
+     (新增/再融资 as column-group headers, one data row per region), and
+     _parse_plan_table_row_oriented() for 广东-style tables (新增/再融资
+     as row-group labels, a dedicated "合计" column holds the period total).
+  2. _parse_plan_text_fallback(): label-adjacent regex against the raw text
+     layer, for text-native PDFs whose table geometry pdfplumber can't
+     recover cleanly.
+  3. _parse_plan_text_positional(): for OCR'd documents where even the
+     category labels are lost, reads the 7 numbers off a "合计" line in
+     fixed positional order and only trusts them if they arithmetically
+     self-validate (新增一般+新增专项≈新增小计, etc.) -- returns nothing
+     rather than a guess if validation fails.
+Tested against exactly the 10 provinces state_plans.csv was missing an
+August 2026 plan for: 6 filled cleanly (上海市, 吉林省, 广东省, 辽宁省,
+山西省, 新疆生产建设兵团), while the other 4 (大连市, 河南省, 西藏自治区,
+青岛市) were confirmed via direct API querying (both long and short
+issuer-name forms) to simply have no recent 2026 plan document on
+chinabond.com.cn for this channel -- a genuine source-side content gap,
+not a parser or discovery failure.
 
 ## Other channels available (not used by this module yet)
 
@@ -230,5 +249,277 @@ def crawl_all_results(provinces: list[str], page_size: int = 10, use_cache: bool
             out[p] = crawl_results(p, page_size=page_size, use_cache=use_cache)
         except Exception as e:
             print(f"[chinabond_crawl] {p} failed: {e}")
+            out[p] = []
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 发行计划 (issuance plan) parsing
+# ---------------------------------------------------------------------------
+#
+# Confirmed 2026-08-12 across real documents from 上海/广东/山东: at least
+# 3 distinct presentations exist for the SAME underlying data (province,
+# 新增一般/新增专项/再融资一般/再融资专项 amounts for the covered period):
+#   - 山东 (text-native PDF, clean pdfplumber table): column-oriented --
+#     新增债券/再融资债券 are column-GROUP headers (each spanning 小计/一般
+#     债券/专项债券 sub-columns), one data row per region.
+#   - 广东 (text-native PDF, clean pdfplumber table): row-oriented, spans a
+#     quarter with a monthly/旬 breakdown -- 新增债券/再融资债券 are ROW
+#     group labels in an early column, 一般/专项债券 in the next column, and
+#     a dedicated "合计" column holds each row's own period total (collapsing
+#     the 旬/月 sub-breakdown, which is more granularity than state_plans.csv
+#     tracks).
+#   - 上海 (scanned/photographed PDF, OCR only, no table geometry survives):
+#     falls back to a flat-text regex heuristic over the OCR'd text.
+# parse_plan_pdf() tries both known table orientations first and only drops
+# to the OCR text heuristic when no table structure was recovered at all.
+
+from .extract_plan import _covered_period
+
+_PLAN_AMOUNT_KEYS = ("new_general", "new_special", "refi_general", "refi_special")
+
+
+def _to_float(s) -> float | None:
+    if s is None:
+        return None
+    s = str(s).replace(",", "").replace("，", "").strip()
+    if not s or s == "-":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        m = re.search(r"[\d.]+", s)
+        return float(m.group(0)) if m else None
+
+
+def _parse_plan_table_column_oriented(table: list) -> dict | None:
+    """山东-style: 新增债券/再融资债券 as column-group headers spanning
+    小计/一般债券/专项债券 sub-columns, one data row per region."""
+    header_rows, data_row = [], None
+    for row in table:
+        first = (row[0] or "").strip() if row and row[0] else ""
+        if first and first not in ("地区", "省", "市", "自治区") and any(k in first for k in ("省", "市", "自治区", "地区")):
+            data_row = row
+        else:
+            header_rows.append(row)
+    if data_row is None or not header_rows:
+        return None
+
+    filled_headers = []
+    for hr in header_rows:
+        filled, last = [], None
+        for v in hr:
+            v = (v or "").strip() or None
+            if v:
+                last = v
+            filled.append(last)
+        filled_headers.append(filled)
+
+    result = {k: None for k in _PLAN_AMOUNT_KEYS}
+    found_any = False
+    for c in range(len(data_row)):
+        supercat = subcat = None
+        for hr in filled_headers:
+            val = hr[c] if c < len(hr) else None
+            if val in ("新增债券", "再融资债券"):
+                supercat = val
+            if val in ("一般债券", "专项债券"):
+                subcat = val
+        if supercat and subcat:
+            key = ("new" if supercat == "新增债券" else "refi") + ("_general" if subcat == "一般债券" else "_special")
+            result[key] = _to_float(data_row[c])
+            found_any = True
+    return result if found_any else None
+
+
+def _parse_plan_table_row_oriented(table: list) -> dict | None:
+    """广东-style: 新增债券/再融资债券 as row-group labels in an early
+    column, 一般债券/专项债券 in the next column, a dedicated "合计" column
+    holds each row's own period total."""
+    total_col = None
+    for row in table[:3]:
+        for i, v in enumerate(row):
+            if v and str(v).strip() == "合计":
+                total_col = i
+                break
+        if total_col is not None:
+            break
+    if total_col is None:
+        return None
+
+    result = {k: None for k in _PLAN_AMOUNT_KEYS}
+    current_supercat = None
+    found_any = False
+    for row in table:
+        c0 = (row[0] or "").replace("\n", "").strip() if row and row[0] else ""
+        if "新增" in c0:
+            current_supercat = "新增债券"
+        elif "再融资" in c0:
+            current_supercat = "再融资债券"
+        subcat = (row[1] or "").strip() if len(row) > 1 and row[1] else None
+        if subcat in ("一般债券", "专项债券") and current_supercat and total_col < len(row):
+            key = ("new" if current_supercat == "新增债券" else "refi") + ("_general" if subcat == "一般债券" else "_special")
+            result[key] = _to_float(row[total_col])
+            found_any = True
+    return result if found_any else None
+
+
+def _parse_plan_text_fallback(text: str) -> dict:
+    """For OCR'd/scanned plan documents where no table geometry survived
+    (confirmed: 上海's plan PDF, a photographed/scanned original). Splits
+    the document at the "再融资债券" label: 一般/专项债券 mentions found
+    BEFORE that split belong to 新增债券, ones found AFTER belong to
+    再融资债券. A blank cell (no number printed after the label) correctly
+    produces no match rather than mis-attributing a later number to it."""
+    result = {k: None for k in _PLAN_AMOUNT_KEYS}
+    split_idx = text.find("再融资债券")
+    before = text[:split_idx] if split_idx >= 0 else text
+    after = text[split_idx:] if split_idx >= 0 else ""
+    for label, seg, key in [
+        ("一般", before, "new_general"), ("专项", before, "new_special"),
+        ("一般", after, "refi_general"), ("专项", after, "refi_special"),
+    ]:
+        m = re.search(rf"{label}债券\s*[|｜]?\s*([\d,]+\.?\d*)", seg)
+        if m:
+            result[key] = _to_float(m.group(1))
+    return result
+
+
+def _parse_plan_text_positional(text: str) -> dict | None:
+    """Second-tier OCR fallback for when even the category LABEL text
+    (新增债券/一般债券/etc) was lost or scattered by OCR, not just the
+    table borders (confirmed: 山西/新疆生产建设兵团 -- the label row and
+    the numbers row land far enough apart in the OCR'd text that
+    _parse_plan_text_fallback's label-adjacent-to-number assumption never
+    matches). Every confirmed table template (山东/广东/辽宁, see above)
+    puts a grand-total ("合计") row with exactly 7 numbers in the same
+    fixed order: [总计, 新增小计, 新增一般, 新增专项, 再融资小计, 再融资
+    一般, 再融资专项]. Find a "合计"-prefixed line with 7 numbers and
+    SELF-VALIDATE the positional guess via arithmetic (一般+专项 should
+    equal each 小计, and the two 小计 should sum to 总计) before trusting
+    it -- confirmed exact (sub-1-unit rounding) on both 山西 and 新疆生产
+    建设兵团's real documents. Returns None (never guesses) if the numbers
+    don't add up, e.g. because this wasn't really the grand-total line."""
+    for line in text.splitlines():
+        if not re.match(r"^\s*合\s*计", line):
+            continue
+        # Confirmed (新疆生产建设兵团): OCR sometimes injects a stray space
+        # right after a decimal point ("27. 0274" instead of "27.0274"),
+        # splitting one number into two tokens -- same artifact already
+        # documented in extract_result.py's _to_float() for province PDFs.
+        # Must collapse this BEFORE extracting numbers, or a 7-number line
+        # silently becomes 8 tokens and the whole positional mapping shifts.
+        clean_line = re.sub(r"(\d)\.\s+(\d)", r"\1.\2", line)
+        nums = [_to_float(x) for x in re.findall(r"[\d,]+\.?\d*", clean_line)]
+        if len(nums) < 7 or any(n is None for n in nums[:7]):
+            continue
+        total, new_sub, new_g, new_s, refi_sub, refi_g, refi_s = nums[:7]
+        tol = max(0.5, total * 0.01)
+        if (abs(new_g + new_s - new_sub) < tol
+                and abs(refi_g + refi_s - refi_sub) < tol
+                and abs(new_sub + refi_sub - total) < tol):
+            return {"new_general": new_g, "new_special": new_s, "refi_general": refi_g, "refi_special": refi_s}
+    return None
+
+
+def parse_plan_pdf(pdf_result: dict, province: str, title: str) -> dict:
+    """Parse one chinabond.com.cn 发行计划 PDF (already run through
+    pdf_extract.extract_pdf()) into the same field shape as
+    state_plans.csv/extract_plan.py: plan_general_amount_yi (新增-一般),
+    plan_special_amount_yi (新增-专项), plan_refinancing_amount_yi
+    (再融资-一般 + 再融资-专项 summed, matching that schema's single
+    combined refinancing field rather than splitting it further)."""
+    text = pdf_result["text"]
+    tables = pdf_result["tables"]
+    method = pdf_result["method"]
+
+    year, mstart, mend = _covered_period(title, text)
+    row = {
+        "province": province, "covered_year": year,
+        "covered_month_start": mstart, "covered_month_end": mend,
+        "plan_general_amount_yi": None, "plan_special_amount_yi": None,
+        "plan_refinancing_amount_yi": None,
+        "extraction_method": method, "warnings": [],
+    }
+    if year is None:
+        row["warnings"].append("未能从标题识别计划覆盖的月份/季度")
+
+    parsed = None
+    for table in tables:
+        parsed = _parse_plan_table_column_oriented(table) or _parse_plan_table_row_oriented(table)
+        if parsed:
+            break
+    if parsed is None:
+        parsed = _parse_plan_text_fallback(text)
+        if not any(v is not None for v in parsed.values()):
+            positional = _parse_plan_text_positional(text)
+            if positional:
+                parsed = positional
+                row["warnings"].append("表格结构未能识别，字段标签也丢失，改用'合计'行7个数字的位置推断+算术自校验提取，建议人工核对")
+            else:
+                row["warnings"].append("表格结构未能识别（多为扫描件），改用OCR文本启发式规则提取，可靠性较低，需人工核对")
+        else:
+            row["warnings"].append("表格结构未能识别（多为扫描件），改用OCR文本启发式规则提取，可靠性较低，需人工核对")
+
+    row["plan_general_amount_yi"] = parsed.get("new_general")
+    row["plan_special_amount_yi"] = parsed.get("new_special")
+    refi_g, refi_s = parsed.get("refi_general"), parsed.get("refi_special")
+    if refi_g is not None or refi_s is not None:
+        row["plan_refinancing_amount_yi"] = (refi_g or 0) + (refi_s or 0)
+
+    if method == "ocr":
+        row["warnings"].append("本行来自OCR识别，数值型字段准确性需人工核对")
+    row["warnings"] = "; ".join(row["warnings"])
+    return row
+
+
+def crawl_plans(province: str, page_size: int = 10, use_cache: bool = True) -> list[dict]:
+    """Fetch + parse the most recent 发行计划 items for one province from
+    chinabond.com.cn. Returns rows in extract_plan.py's schema plus
+    `source_url`/`announcement_title`, most recent first."""
+    from . import http_client, pdf_extract
+
+    items = fetch_channel_page(CHANNEL_PLANS, issuer=province, page_size=page_size)
+    all_rows = []
+    for item in items:
+        detail_url = item.get("property0")
+        if not detail_url:
+            continue
+        try:
+            detail = fetch_detail(detail_url)
+        except Exception:
+            continue
+        files = detail.get("files") or []
+        if not files:
+            continue
+        pdf_url = files[0]["url"]
+        try:
+            pdf_path = http_client.fetch_pdf(pdf_url, use_cache=use_cache)
+            result = pdf_extract.extract_pdf(pdf_path, use_cache=use_cache)
+        except Exception as e:
+            all_rows.append({
+                "province": province, "covered_year": None, "covered_month_start": None,
+                "covered_month_end": None, "plan_general_amount_yi": None,
+                "plan_special_amount_yi": None, "plan_refinancing_amount_yi": None,
+                "extraction_method": "failed", "warnings": f"下载/解析PDF失败: {e}",
+                "source_url": pdf_url, "announcement_title": item.get("title"),
+            })
+            continue
+        row = parse_plan_pdf(result, province, item.get("title", ""))
+        row["source_url"] = pdf_url
+        row["announcement_title"] = item.get("title")
+        all_rows.append(row)
+    return all_rows
+
+
+def crawl_all_plans(provinces: list[str], page_size: int = 10, use_cache: bool = True) -> dict[str, list[dict]]:
+    """crawl_plans() for each province, resilient to one province's failure
+    (see crawl_all_results()'s docstring for why)."""
+    out = {}
+    for p in provinces:
+        try:
+            out[p] = crawl_plans(p, page_size=page_size, use_cache=use_cache)
+        except Exception as e:
+            print(f"[chinabond_crawl] {p} (plans) failed: {e}")
             out[p] = []
     return out
