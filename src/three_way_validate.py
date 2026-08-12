@@ -61,8 +61,22 @@ def check_sse_coverage(state_df: pd.DataFrame, months_back: int = 2) -> dict:
     -- SSE has no amount/rate to cross-check, so this can only ever report
     existence gaps, never value mismatches.
 
-    Confirmed (2026-08-11) the gap concentrates heavily by PROVINCE, not
-    smoothly by recency the way a pure "celma lags ~1 week" story would
+    Confirmed (2026-08-12) SSE's `securityAbbr` and celma's `bond_short_name`
+    are not always byte-identical for the same bond -- SSE drops the "债"
+    character celma's short name carries (celma: "26江苏债31", SSE:
+    "26江苏31"). A raw-string version of this comparison reported 107/156
+    notices "missing from celma" in a 2-month window; manually checking one
+    province's worth (江苏) showed all 6 of its "missing" bonds were sitting
+    right there in state_results.csv under the celma-convention name.
+    Matching on a "债"-stripped form of both sides collapsed that 107 down
+    to 4 genuinely missing bonds (both in provinces -- 内蒙古/黑龙江 -- outside
+    this project's 10-province coverage, both dated within the trailing
+    week, consistent with celma's ordinary ~1-week lag). **Do not revert to
+    a raw string comparison here** -- 107 looked like a real finding but was
+    this project's own matching bug.
+
+    The remaining (small, real) gap still concentrates heavily by PROVINCE,
+    not smoothly by recency the way a pure "celma lags ~1 week" story would
     predict -- e.g. 青岛市 (Qingdao) showed 100% missing on a notice 3 weeks
     old, while other provinces from the same week showed 0% missing. This
     matches celma's own already-documented irregular publishing rhythm for
@@ -75,16 +89,21 @@ def check_sse_coverage(state_df: pd.DataFrame, months_back: int = 2) -> dict:
     notices = sse_listing.fetch_recent_listing_notices(start, end)
 
     known_shortnames = set(state_df["bond_short_name"].dropna())
+    known_normalized = {s.replace("债", "") for s in known_shortnames}
+
+    def _is_known(abbr: str) -> bool:
+        return abbr in known_shortnames or abbr.replace("债", "") in known_normalized
+
     missing = [
         n for n in notices
-        if n.get("securityAbbr") and n["securityAbbr"] not in known_shortnames
+        if n.get("securityAbbr") and not _is_known(n["securityAbbr"])
     ]
     by_province: dict[str, dict] = {}
     for n in notices:
         prov = n.get("province") or "未知"
         by_province.setdefault(prov, {"checked": 0, "missing": 0})
         by_province[prov]["checked"] += 1
-        if n.get("securityAbbr") and n["securityAbbr"] not in known_shortnames:
+        if n.get("securityAbbr") and not _is_known(n["securityAbbr"]):
             by_province[prov]["missing"] += 1
     return {"checked": len(notices), "missing_from_celma": missing, "missing_by_province": by_province}
 
