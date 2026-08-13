@@ -56,7 +56,7 @@ mismatches.
 - 重庆 (Chongqing): "pdf", confirmed low-yield due to a label-block-then-
   value-block layout the shared parser doesn't handle (see its notes).
 
-14 provinces confirmed working as of 2026-08-12 (see PROVINCE_SOURCES).
+15 provinces confirmed working as of 2026-08-13 (see PROVINCE_SOURCES).
 12 more were investigated in a second research pass (2026-08-12, after
 gaining Playwright for JS-rendered listing pages) and confirmed to be
 genuine dead ends -- their own sites publish no 发行结果 content at all,
@@ -229,6 +229,25 @@ PROVINCE_SOURCES: dict[str, ProvinceSource] = {
               "LOW YIELD like 青岛/重庆/天津 -- tested against a real 2-bond 2026-08-11 batch and both "
               "rows were correctly caught by low_confidence (OCR block-splitting artifact), 0 usable "
               "rows but also 0 false positives.",
+    ),
+    # ---- Added 2026-08-13: discovered while answering "does 大连市 have its
+    # own finance-bureau site" (asked after chinabond.com.cn came up empty
+    # for 大连's August 发行计划). It does, and turned out to be the BEST
+    # source structurally found in this whole project so far. ----
+    "大连市": ProvinceSource(
+        "大连市", "czj.dl.gov.cn", "html",
+        "https://czj.dl.gov.cn/art/2026/6/25/art_5025_2520299.html",
+        notes="Clean inline HTML (NOT a PDF at all -- no OCR, no text-layer extraction needed, "
+              "the standardized 债券名称/计划发行规模/... key-value template is directly in the page "
+              "body). Verified 9/9 bonds on the 2026年第五批 (2026-06-25) batch matched celma's own "
+              "state_results.csv exactly on amount/term/rate (26大连债14~22). This site was never "
+              "researched before 2026-08-13 -- 大连市 previously had NO dedicated provincial source at "
+              "all in this project, relying entirely on celma/chinabond. Listing column is "
+              "`/col/col5025/index.html` ('财政公告'), which mixes 发行结果公告 with 信息披露文件 "
+              "(pre-issuance disclosure) items -- filter by title containing '发行结果'. Checked the "
+              "same listing back 6 months for a standalone '发行计划'/'发行安排'-titled document (the "
+              "actual reason this was researched) and found none -- 大连市 does not appear to publish "
+              "one via its own site either, consistent with chinabond.com.cn's gap for it.",
     ),
 }
 

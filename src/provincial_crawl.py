@@ -75,6 +75,10 @@ LISTING_URLS: dict[str, str] = {
     "山东省": "http://czt.shandong.gov.cn/col/col10559/index.html",
     "青岛市": "http://qdcz.qingdao.gov.cn/zfxxgk/fdzdgknr/zdly/zwgl/index.shtml",
     "河南省": "https://czt.henan.gov.cn/xwdt/tzgg/",
+    # Added 2026-08-13: 大连市 previously had no dedicated source at all in
+    # this project (see provincial_verify.py's PROVINCE_SOURCES entry --
+    # clean inline HTML, no OCR, verified 9/9 bonds against celma).
+    "大连市": "https://czj.dl.gov.cn/col/col5025/index.html",
 }
 
 # 新疆's own column-level listing pages (c115017/, c115008/) are WAF-blocked
