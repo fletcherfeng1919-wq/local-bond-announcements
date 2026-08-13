@@ -366,22 +366,38 @@ def _parse_plan_table_row_oriented(table: list) -> dict | None:
 
 def _parse_plan_text_fallback(text: str) -> dict:
     """For OCR'd/scanned plan documents where no table geometry survived
-    (confirmed: 上海's plan PDF, a photographed/scanned original). Splits
-    the document at the "再融资债券" label: 一般/专项债券 mentions found
-    BEFORE that split belong to 新增债券, ones found AFTER belong to
-    再融资债券. A blank cell (no number printed after the label) correctly
-    produces no match rather than mis-attributing a later number to it."""
+    (confirmed: 上海/吉林's plan PDFs, both photographed/scanned originals).
+    Every confirmed document of this kind lists 一般债券/专项债券 amounts in
+    a fixed reading order -- 新增-一般, 新增-专项, 再融资-一般, 再融资-专项 --
+    so the 1st "一般债券"-labeled number is new_general and the 2nd (if any)
+    is refi_general, same pattern for 专项债券/new_special/refi_special. A
+    blank cell (no number printed after the label) correctly produces no
+    match for that occurrence rather than a wrong one.
+
+    Originally this split the text at the "再融资债券" row-group label and
+    looked for 一般/专项 before vs after that point, but real OCR output
+    (confirmed: 吉林's 2026年8月 plan) can place a value BEFORE its own
+    row-group label text appears in reading order (the 再融资-一般 number
+    landed before the "再融资债券" label itself) -- silently dropping that
+    field and, combined with the decimal-point-space OCR artifact below,
+    truncating 21.3000/33.5400 to 21/33. The old code passed its own no-crash
+    test (上海's refi cells are genuinely blank, so the bug was invisible)
+    but produced 3 wrong numbers on 吉林 before this was caught by a manual
+    visual check against the rendered PDF page. Don't revert to the
+    split-based approach without re-verifying the reading-order assumption
+    against a rendered image, not just the extracted text."""
+    text = re.sub(r"(\d)\.\s+(\d)", r"\1.\2", text)
     result = {k: None for k in _PLAN_AMOUNT_KEYS}
-    split_idx = text.find("再融资债券")
-    before = text[:split_idx] if split_idx >= 0 else text
-    after = text[split_idx:] if split_idx >= 0 else ""
-    for label, seg, key in [
-        ("一般", before, "new_general"), ("专项", before, "new_special"),
-        ("一般", after, "refi_general"), ("专项", after, "refi_special"),
-    ]:
-        m = re.search(rf"{label}债券\s*[|｜]?\s*([\d,]+\.?\d*)", seg)
-        if m:
-            result[key] = _to_float(m.group(1))
+    general_matches = re.findall(r"一般债券\s*[|｜]?\s*([\d,]+\.?\d*)", text)
+    special_matches = re.findall(r"专项债券\s*[|｜]?\s*([\d,]+\.?\d*)", text)
+    if general_matches:
+        result["new_general"] = _to_float(general_matches[0])
+        if len(general_matches) > 1:
+            result["refi_general"] = _to_float(general_matches[1])
+    if special_matches:
+        result["new_special"] = _to_float(special_matches[0])
+        if len(special_matches) > 1:
+            result["refi_special"] = _to_float(special_matches[1])
     return result
 
 

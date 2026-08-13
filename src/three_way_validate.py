@@ -83,16 +83,42 @@ def check_sse_coverage(state_df: pd.DataFrame, months_back: int = 2) -> dict:
     certain issuers (青岛's confirmed-results announcements arrive in
     infrequent bursts covering several months at once, not steadily) --
     the per-province breakdown here is what makes that visible instead of
-    a single flat count that looks like a uniform lag."""
+    a single flat count that looks like a uniform lag.
+
+    **Second naming bug found 2026-08-13 (same family as the "债" one
+    above, do not let this recur a third time)**: SSE abbreviates two
+    provinces' ROOT names, not just the usual 省/自治区 suffix -- 黑龙江省
+    becomes "龙江" (drops the leading char) and 内蒙古自治区 becomes "内蒙"
+    (drops the trailing char of the root), while celma keeps the full root
+    ("26黑龙江债22", "26内蒙古债18"). These are the only two provinces in
+    config.PROVINCES whose root name is 3+ characters, so this is a closed,
+    fully-enumerable set, not a pattern needing fuzzy matching. Caught by
+    manually cross-referencing what looked like 4 "genuine" gaps (内蒙古×2,
+    黑龙江×2) against state_results.csv directly -- all 4 were already
+    present (黑龙江's natively via celma's own crawl, 内蒙古's via an earlier
+    Wind-reconcile patch), just unmatched by the "债"-only normalization.
+    Before this fix the SSE gap count over-reported by up to 4 whenever
+    these two provinces had recent listings -- **always check a
+    "missing" bond against state_results.csv by eye for 内蒙古/黑龙江 before
+    trusting this function's output for them**, or better, keep this alias
+    map current if a third such province is ever found."""
     start = _months_back_start(months_back)
     end = datetime.date.today().isoformat()
     notices = sse_listing.fetch_recent_listing_notices(start, end)
 
+    _PROVINCE_ROOT_ALIASES = {"黑龙江": "龙江", "内蒙古": "内蒙"}
+
+    def _normalize(s: str) -> str:
+        s = s.replace("债", "")
+        for full, short in _PROVINCE_ROOT_ALIASES.items():
+            s = s.replace(full, short)
+        return s
+
     known_shortnames = set(state_df["bond_short_name"].dropna())
-    known_normalized = {s.replace("债", "") for s in known_shortnames}
+    known_normalized = {_normalize(s) for s in known_shortnames}
 
     def _is_known(abbr: str) -> bool:
-        return abbr in known_shortnames or abbr.replace("债", "") in known_normalized
+        return abbr in known_shortnames or _normalize(abbr) in known_normalized
 
     missing = [
         n for n in notices
