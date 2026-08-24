@@ -1,6 +1,6 @@
 # 交接文档（写给零上下文的新会话）
 
-最后更新：2026-08-13，最新 commit `f170742`（已 push 到 `origin/main`，working tree 干净）。
+最后更新：2026-08-24，最新 commit `50d5145`（已 push 到 `origin/main`，working tree 干净）。
 
 ## 1. 这是什么项目
 
@@ -313,12 +313,13 @@ celma.org.cn 有三个抓取渠道（`channelId`）：
 | 内容 | 路径/地址 |
 |---|---|
 | 项目根目录 | `/Users/sabacus/Projects/local_bond_announcements` |
+| 从零复刻本项目的独立指南 | `REPLICATION_GUIDE.md`（写给无本仓库访问权限的agent，2026-08-24新增） |
 | 看板权威文件（git 跟踪） | `output/bond_analysis_dashboard.html` |
 | 数据刷新脚本 | `src/build_dashboard_plan.py`（`refresh_plan_section` / `refresh_calendar_section`，接入 `main.py`） |
 | 区域/省份/期限常量 | `src/config.py` |
 | 三张状态表 | `data/state_plans.csv` / `data/state_announcements.csv` / `data/state_results.csv` |
 | Claude Artifact 链接 | `https://claude.ai/code/artifact/86697346-81da-47bf-bc7c-438563254684` |
-| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `f170742` |
+| GitHub 仓库 | `fletcherfeng1919-wq/local-bond-announcements`，分支 `main`，最新 commit `50d5145` |
 | 省级公告解析（单条URL） | `src/provincial_verify.py`（15个省份接入，见第2节说明） |
 | 省级自动爬虫（列表发现） | `src/provincial_crawl.py`（Playwright，`LISTING_URLS`/`crawl_all()`） |
 | 三方交叉校验+报表+自动修正 | `src/three_way_validate.py`（`run_validation()`/`apply_corrections()`/`build_validation_report_xlsx()`） |
